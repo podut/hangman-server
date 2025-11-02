@@ -5,12 +5,15 @@ from typing import Optional, Dict, Any
 import secrets
 from ..repositories.user_repository import UserRepository
 from ..utils.auth_utils import hash_password, verify_password, create_access_token
+from ..utils.login_tracker import LoginAttemptTracker
+from ..config import settings
 from ..exceptions import (
     UserAlreadyExistsException,
     InvalidCredentialsException,
     UserNotFoundException,
     InvalidPasswordException,
-    InvalidTokenException
+    InvalidTokenException,
+    AccountLockedException
 )
 
 
@@ -21,6 +24,12 @@ class AuthService:
         self.user_repo = user_repo
         # In-memory storage for reset tokens (in production, use Redis or database)
         self._reset_tokens: Dict[str, Dict[str, Any]] = {}
+        # Login attempt tracker for brute-force protection
+        self.login_tracker = LoginAttemptTracker(
+            max_attempts=settings.max_login_attempts,
+            lockout_duration_minutes=settings.login_lockout_duration_minutes,
+            attempt_window_minutes=settings.login_attempt_window_minutes
+        )
         
     def register_user(self, email: str, password: str, nickname: Optional[str] = None) -> Dict[str, Any]:
         """Register a new user."""
@@ -66,10 +75,20 @@ class AuthService:
         
     def login_user(self, email: str, password: str) -> Dict[str, Any]:
         """Authenticate user and return tokens."""
+        # Check if account is locked
+        if self.login_tracker.is_locked(email):
+            lockout_seconds = self.login_tracker.get_lockout_remaining(email)
+            raise AccountLockedException(lockout_seconds or 0)
+        
         user = self.user_repo.get_by_email(email)
         
         if not user or not verify_password(password, user["password"]):
+            # Record failed attempt
+            self.login_tracker.record_failed_attempt(email)
             raise InvalidCredentialsException()
+        
+        # Successful login - reset failed attempts
+        self.login_tracker.record_successful_login(email)
             
         access_token = create_access_token({"sub": user["user_id"]})
         refresh_token = create_access_token({"sub": user["user_id"], "type": "refresh"})

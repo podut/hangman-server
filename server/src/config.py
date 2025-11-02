@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # Testing
     disable_rate_limiting: bool = False
     
+    # Brute-force Protection
+    max_login_attempts: int = 5
+    login_lockout_duration_minutes: int = 15
+    login_attempt_window_minutes: int = 15
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

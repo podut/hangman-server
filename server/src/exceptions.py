@@ -41,6 +41,21 @@ class InvalidCredentialsException(AuthenticationException):
         )
 
 
+class AccountLockedException(AuthenticationException):
+    """Raised when account is locked due to too many failed login attempts."""
+    
+    def __init__(self, lockout_seconds: int, detail: Optional[str] = None):
+        message = f"Account temporarily locked due to too many failed login attempts"
+        if not detail:
+            detail = f"Try again in {lockout_seconds} seconds"
+        super().__init__(
+            ErrorCode.ACCOUNT_LOCKED,
+            message,
+            detail
+        )
+        self.lockout_seconds = lockout_seconds
+
+
 class TokenExpiredException(AuthenticationException):
     """Raised when JWT token has expired."""
     

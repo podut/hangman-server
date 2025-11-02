@@ -18,6 +18,7 @@ class ErrorCode(str, Enum):
     USER_EXISTS = "USER_EXISTS"
     USER_NOT_FOUND = "USER_NOT_FOUND"
     INVALID_PASSWORD = "INVALID_PASSWORD"
+    ACCOUNT_LOCKED = "ACCOUNT_LOCKED"
     
     # Session Management (2xxx)
     SESSION_NOT_FOUND = "SESSION_2001"
