@@ -4,11 +4,11 @@ Acest proiect include 3 variante de Jenkinsfile pentru diferite environment-uri.
 
 ## 📁 Fișiere Jenkins
 
-| Fișier | Descriere | Recomandat pentru |
-|--------|-----------|-------------------|
-| `Jenkinsfile` | Pipeline complet pentru Linux | Production, Linux servers |
-| `Jenkinsfile.windows` | Pipeline pentru Windows | Development pe Windows |
-| `Jenkinsfile.docker` | Pipeline cu Docker agent | Containere, CI/CD modern |
+| Fișier                | Descriere                     | Recomandat pentru         |
+| --------------------- | ----------------------------- | ------------------------- |
+| `Jenkinsfile`         | Pipeline complet pentru Linux | Production, Linux servers |
+| `Jenkinsfile.windows` | Pipeline pentru Windows       | Development pe Windows    |
+| `Jenkinsfile.docker`  | Pipeline cu Docker agent      | Containere, CI/CD modern  |
 
 ## 🚀 Quick Start
 
@@ -127,10 +127,10 @@ environment {
     DEBUG = 'false'
     SERVER_HOST = '0.0.0.0'
     SERVER_PORT = '8000'
-    
+
     // Database (dacă folosești)
     DATABASE_URL = credentials('database-url')
-    
+
     // Email notifications
     EMAIL_RECIPIENTS = 'dev-team@example.com'
 }
@@ -151,7 +151,7 @@ post {
             to: "dev-team@example.com"
         )
     }
-    
+
     failure {
         emailext(
             subject: "❌ Build Failed: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
@@ -242,6 +242,7 @@ agent {
 **Problema**: Python nu este găsit
 
 **Soluție**:
+
 ```groovy
 // Jenkinsfile
 environment {
@@ -322,7 +323,7 @@ stage('Deploy to Production') {
     }
     steps {
         input message: 'Deploy to production?', ok: 'Deploy'
-        
+
         // Deployment steps
     }
 }
@@ -379,6 +380,7 @@ După configurare, fiecare build va:
 ## 📞 Support
 
 Pentru probleme cu Jenkins setup:
+
 - Verifică Jenkins logs: `http://jenkins-server/log/all`
 - Check build console output
 - Contactează echipa DevOps

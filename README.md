@@ -1,14 +1,8 @@
 # 🎮 Hangman Server API# Hangman Server Project
 
-
-
 REST API complet pentru jocul Hangman (Spânzurătoarea), construit cu FastAPI.Proiect server Hangman cu API REST și client Python.
 
-
-
 ## ✨ Features## Quick Start
-
-
 
 ### Core Features```bash
 
