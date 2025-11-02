@@ -35,7 +35,10 @@ from .utils.logging_config import setup_logging
 
 # Import exception handlers
 from .error_handlers import register_exception_handlers
-from .exceptions import UnauthorizedException, ForbiddenException, TokenInvalidException
+from .exceptions import (
+    UnauthorizedException, ForbiddenException, TokenInvalidException,
+    DictionaryNotFoundException, DictionaryInvalidException
+)
 
 # Import middleware
 from .middleware import RequestIDMiddleware, LoggingMiddleware, RateLimiterMiddleware
@@ -109,7 +112,7 @@ auth_service = AuthService(user_repo)
 session_service = SessionService(session_repo, dict_repo)
 game_service = GameService(game_repo, session_repo, dict_repo)
 stats_service = StatsService(user_repo, session_repo, game_repo)
-dict_service = DictionaryService(dict_repo)
+dict_service = DictionaryService(dict_repo, session_repo)
 
 
 # ============= DEPENDENCIES =============
@@ -532,6 +535,19 @@ def update_dictionary(
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+
+@app.delete("/api/v1/admin/dictionaries/{dictionary_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_dictionary(dictionary_id: str, admin=Depends(get_admin_user)):
+    """Delete a dictionary (admin only). Cannot delete if in use by active sessions."""
+    try:
+        dict_service.delete_dictionary(dictionary_id)
+        return None
+    except DictionaryNotFoundException as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except DictionaryInvalidException as e:
+        # Cannot delete dictionary that is in use
+        raise HTTPException(status_code=409, detail=str(e))
 
 
 @app.get("/api/v1/admin/dictionaries/{dictionary_id}/words")

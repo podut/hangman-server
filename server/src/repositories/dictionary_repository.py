@@ -59,3 +59,10 @@ class DictionaryRepository:
     def exists(self, dictionary_id: str) -> bool:
         """Check if dictionary exists."""
         return dictionary_id in self._dictionaries
+    
+    def delete(self, dictionary_id: str) -> bool:
+        """Delete dictionary by ID. Returns True if deleted, False if not found."""
+        if dictionary_id in self._dictionaries:
+            del self._dictionaries[dictionary_id]
+            return True
+        return False

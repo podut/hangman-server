@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import random
 from ..repositories.dictionary_repository import DictionaryRepository
+from ..repositories.session_repository import SessionRepository
 from ..exceptions import (
     DictionaryNotFoundException,
     DictionaryAlreadyExistsException,
@@ -15,8 +16,9 @@ from ..exceptions import (
 class DictionaryService:
     """Service for dictionary operations."""
     
-    def __init__(self, dict_repo: DictionaryRepository):
+    def __init__(self, dict_repo: DictionaryRepository, session_repo: Optional[SessionRepository] = None):
         self.dict_repo = dict_repo
+        self.session_repo = session_repo
         
     def get_dictionary(self, dictionary_id: str) -> Dict[str, Any]:
         """Get a dictionary by ID with full details including words."""
@@ -151,11 +153,17 @@ class DictionaryService:
         }
     
     def delete_dictionary(self, dictionary_id: str) -> bool:
-        """Delete a dictionary."""
+        """Delete a dictionary (admin only). Prevents deletion if dictionary is in use."""
         dictionary = self.dict_repo.get_by_id(dictionary_id)
         
         if not dictionary:
             raise DictionaryNotFoundException(dictionary_id)
+        
+        # Check if dictionary is in use by active sessions
+        if self.session_repo and self.session_repo.is_dictionary_in_use(dictionary_id):
+            raise DictionaryInvalidException(
+                "Cannot delete dictionary that is in use by active sessions"
+            )
         
         return self.dict_repo.delete(dictionary_id)
         

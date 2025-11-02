@@ -293,3 +293,98 @@ class TestDictionaryAdminEndpoints:
         assert response.status_code == 403
         data = response.json()
         assert "error" in data or "detail" in data
+    
+    def test_delete_dictionary_as_admin(self, client, admin_headers):
+        """Test deleting a dictionary as admin (should succeed)."""
+        # Create a dictionary to delete
+        create_response = client.post(
+            "/api/v1/admin/dictionaries",
+            headers=admin_headers,
+            params={"name": "delete_test"},
+            json=["word1", "word2", "word3"]
+        )
+        assert create_response.status_code == 201
+        created_data = create_response.json()
+        dict_id = created_data.get("dict_id") or created_data.get("dictionary_id")
+        
+        # Delete it
+        response = client.delete(
+            f"/api/v1/admin/dictionaries/{dict_id}",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 204
+        
+        # Verify it's deleted by trying to get it
+        get_response = client.get(
+            f"/api/v1/admin/dictionaries/{dict_id}/words",
+            headers=admin_headers
+        )
+        assert get_response.status_code == 404
+    
+    def test_delete_dictionary_not_found(self, client, admin_headers):
+        """Test deleting non-existent dictionary (should return 404)."""
+        response = client.delete(
+            "/api/v1/admin/dictionaries/nonexistent_dict_id",
+            headers=admin_headers
+        )
+        
+        assert response.status_code == 404
+        data = response.json()
+        assert "error" in data or "detail" in data
+    
+    def test_delete_dictionary_as_regular_user(self, client, regular_user_headers):
+        """Test deleting dictionary as non-admin (should be forbidden)."""
+        response = client.delete(
+            "/api/v1/admin/dictionaries/dict_ro_basic",
+            headers=regular_user_headers
+        )
+        
+        assert response.status_code == 403
+        data = response.json()
+        assert "error" in data or "detail" in data
+    
+    def test_delete_dictionary_no_auth(self, client):
+        """Test deleting dictionary without authentication (should be unauthorized)."""
+        response = client.delete("/api/v1/admin/dictionaries/dict_ro_basic")
+        
+        assert response.status_code in [401, 403]
+    
+    def test_delete_dictionary_in_use(self, client, admin_headers):
+        """Test deleting dictionary that is in use by active session (should fail)."""
+        # Create a custom dictionary
+        create_response = client.post(
+            "/api/v1/admin/dictionaries",
+            headers=admin_headers,
+            params={"name": "in_use_test"},
+            json=["test", "word", "list"]
+        )
+        assert create_response.status_code == 201
+        created_data = create_response.json()
+        dict_id = created_data.get("dict_id") or created_data.get("dictionary_id")
+        
+        # Create a session using this dictionary
+        session_response = client.post(
+            "/api/v1/sessions",
+            headers=admin_headers,
+            json={
+                "max_attempts": 10,
+                "dictionary_id": dict_id
+            }
+        )
+        assert session_response.status_code == 201
+        
+        # Try to delete the dictionary while it's in use
+        delete_response = client.delete(
+            f"/api/v1/admin/dictionaries/{dict_id}",
+            headers=admin_headers
+        )
+        
+        # Should return 409 Conflict
+        assert delete_response.status_code == 409
+        data = delete_response.json()
+        # FastAPI returns 'detail' field in HTTPException
+        # The exception message should mention "in use"
+        detail_msg = data.get("detail", "")
+        if detail_msg:
+            assert "in use" in detail_msg.lower()

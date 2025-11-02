@@ -50,3 +50,13 @@ class SessionRepository:
         for session_id in sessions_to_delete:
             del self._sessions[session_id]
         return len(sessions_to_delete)
+    
+    def is_dictionary_in_use(self, dictionary_id: str) -> bool:
+        """Check if dictionary is used by any active sessions."""
+        for session in self._sessions.values():
+            if session.get("status") == "ACTIVE":
+                # Dictionary ID is stored in params.dictionary_id
+                params = session.get("params", {})
+                if params.get("dictionary_id") == dictionary_id:
+                    return True
+        return False
