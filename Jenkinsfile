@@ -67,12 +67,18 @@ pipeline {
                     echo '🔧 Setting up Python environment...'
                 }
                 
+                // Install required packages for venv (Debian/Ubuntu)
+                sh """
+                    apt-get update -qq || true
+                    apt-get install -y python3-venv python3-pip || true
+                """
+                
                 // Check Python version
-                sh "python${PYTHON_VERSION} --version || python3 --version || python --version"
+                sh "python3 --version || python --version"
                 
                 // Create virtual environment
                 sh """
-                    python3 -m venv ${VENV_PATH} || python -m venv ${VENV_PATH}
+                    python3 -m venv ${VENV_PATH}
                     . ${VENV_PATH}/bin/activate
                     python --version
                     pip --version
