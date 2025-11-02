@@ -14,7 +14,7 @@ from .config import settings
 from .models import (
     RegisterRequest, LoginRequest, RefreshRequest,
     CreateSessionRequest, GuessRequest, ErrorResponse,
-    ForgotPasswordRequest, ResetPasswordRequest
+    ForgotPasswordRequest, ResetPasswordRequest, UpdateProfileRequest
 )
 
 # Import repositories
@@ -215,6 +215,20 @@ def reset_password(req: ResetPasswordRequest):
 def get_profile(user=Depends(get_current_user)):
     """Get current user profile."""
     return user
+
+
+@app.patch("/api/v1/users/me")
+def update_profile(req: UpdateProfileRequest, user=Depends(get_current_user)):
+    """Update user profile (email and/or nickname)."""
+    user_id = user["user_id"]
+    
+    # At least one field must be provided
+    if req.email is None and req.nickname is None:
+        raise HTTPException(status_code=400, detail="At least one field (email or nickname) must be provided")
+    
+    # Update profile
+    updated_user = auth_service.update_profile(user_id, req.email, req.nickname)
+    return updated_user
 
 
 @app.delete("/api/v1/users/me", status_code=204)

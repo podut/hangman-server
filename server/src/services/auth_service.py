@@ -182,3 +182,33 @@ class AuthService:
         del self._reset_tokens[token]
         
         return {"message": "Password successfully reset"}
+    
+    def update_profile(self, user_id: str, email: Optional[str] = None, nickname: Optional[str] = None) -> Dict[str, Any]:
+        """Update user profile (email and/or nickname)."""
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            raise UserNotFoundException(user_id)
+        
+        updates = {}
+        
+        # Update email if provided
+        if email is not None:
+            # Check if new email is different
+            if email != user["email"]:
+                # Check if email already exists
+                existing_user = self.user_repo.get_by_email(email)
+                if existing_user:
+                    raise UserAlreadyExistsException(email)
+                updates["email"] = email
+        
+        # Update nickname if provided
+        if nickname is not None:
+            updates["nickname"] = nickname
+        
+        # Apply updates if any
+        if updates:
+            self.user_repo.update(user_id, updates)
+            user.update(updates)
+        
+        # Return updated user without password
+        return {k: v for k, v in user.items() if k != "password"}

@@ -29,6 +29,11 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+class UpdateProfileRequest(BaseModel):
+    email: Optional[EmailStr] = None
+    nickname: Optional[str] = None
+
+
 class UserResponse(BaseModel):
     user_id: str
     email: str
