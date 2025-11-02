@@ -1,0 +1,325 @@
+"""
+Pytest fixtures for Hangman server tests.
+Provides reusable test setup including mock repositories, services, and FastAPI test client.
+"""
+
+import pytest
+from typing import Dict, Any, List
+from datetime import datetime
+from fastapi.testclient import TestClient
+from server.src.main import app
+from server.src.repositories.user_repository import UserRepository
+from server.src.repositories.session_repository import SessionRepository
+from server.src.repositories.game_repository import GameRepository
+from server.src.repositories.dictionary_repository import DictionaryRepository
+from server.src.services.auth_service import AuthService
+from server.src.services.session_service import SessionService
+from server.src.services.game_service import GameService
+from server.src.services.stats_service import StatsService
+from server.src.services.dictionary_service import DictionaryService
+from server.src.utils.auth_utils import create_access_token
+
+
+class MockUserRepository(UserRepository):
+    """Mock user repository for testing."""
+    
+    def __init__(self):
+        self.users: Dict[str, Dict[str, Any]] = {}
+        self.next_id = 1
+    
+    def create(self, user_data: Dict[str, Any]) -> Dict[str, Any]:
+        self.users[user_data["user_id"]] = user_data
+        return user_data
+    
+    def get_by_id(self, user_id: str) -> Dict[str, Any] | None:
+        return self.users.get(user_id)
+    
+    def get_by_email(self, email: str) -> Dict[str, Any] | None:
+        for user in self.users.values():
+            if user["email"] == email:
+                return user
+        return None
+    
+    def get_all(self) -> List[Dict[str, Any]]:
+        return list(self.users.values())
+    
+    def update(self, user_id: str, user_data: Dict[str, Any]) -> Dict[str, Any] | None:
+        if user_id in self.users:
+            self.users[user_id].update(user_data)
+            return self.users[user_id]
+        return None
+    
+    def delete(self, user_id: str) -> bool:
+        if user_id in self.users:
+            del self.users[user_id]
+            return True
+        return False
+    
+    def count(self) -> int:
+        return len(self.users)
+
+
+class MockSessionRepository(SessionRepository):
+    """Mock session repository for testing."""
+    
+    def __init__(self):
+        self.sessions: Dict[str, Dict[str, Any]] = {}
+        self.next_id = 1
+    
+    def create(self, session_data: Dict[str, Any]) -> Dict[str, Any]:
+        self.sessions[session_data["session_id"]] = session_data
+        return session_data
+    
+    def get_by_id(self, session_id: str) -> Dict[str, Any] | None:
+        return self.sessions.get(session_id)
+    
+    def get_by_user(self, user_id: str) -> List[Dict[str, Any]]:
+        return [s for s in self.sessions.values() if s["user_id"] == user_id]
+    
+    def get_all(self) -> List[Dict[str, Any]]:
+        return list(self.sessions.values())
+    
+    def update(self, session_id: str, session_data: Dict[str, Any]) -> Dict[str, Any] | None:
+        if session_id in self.sessions:
+            self.sessions[session_id].update(session_data)
+            return self.sessions[session_id]
+        return None
+    
+    def delete(self, session_id: str) -> bool:
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            return True
+        return False
+    
+    def count(self) -> int:
+        return len(self.sessions)
+
+
+class MockGameRepository(GameRepository):
+    """Mock game repository for testing."""
+    
+    def __init__(self):
+        self.games: Dict[str, Dict[str, Any]] = {}
+        self.next_id = 1
+    
+    def create(self, game_data: Dict[str, Any]) -> Dict[str, Any]:
+        self.games[game_data["game_id"]] = game_data
+        return game_data
+    
+    def get_by_id(self, game_id: str) -> Dict[str, Any] | None:
+        return self.games.get(game_id)
+    
+    def get_by_session(self, session_id: str) -> List[Dict[str, Any]]:
+        return [g for g in self.games.values() if g["session_id"] == session_id]
+    
+    def get_all(self) -> List[Dict[str, Any]]:
+        return list(self.games.values())
+    
+    def update(self, game_id: str, game_data: Dict[str, Any]) -> Dict[str, Any] | None:
+        if game_id in self.games:
+            self.games[game_id].update(game_data)
+            return self.games[game_id]
+        return None
+    
+    def delete(self, game_id: str) -> bool:
+        if game_id in self.games:
+            del self.games[game_id]
+            return True
+        return False
+    
+    def count(self) -> int:
+        return len(self.games)
+
+
+class MockDictionaryRepository(DictionaryRepository):
+    """Mock dictionary repository for testing."""
+    
+    def __init__(self):
+        self.dictionaries: Dict[str, Dict[str, Any]] = {
+            "dict_ro_basic": {
+                "dict_id": "dict_ro_basic",
+                "name": "Romanian Basic",
+                "language": "ro",
+                "words": ["python", "testing", "programming", "computer", "keyboard"],
+                "word_count": 5,
+                "created_at": datetime.utcnow().isoformat() + "Z"
+            }
+        }
+        self.next_id = 2
+    
+    def create(self, dict_data: Dict[str, Any]) -> Dict[str, Any]:
+        self.dictionaries[dict_data["dict_id"]] = dict_data
+        return dict_data
+    
+    def get_by_id(self, dict_id: str) -> Dict[str, Any] | None:
+        return self.dictionaries.get(dict_id)
+    
+    def get_all(self) -> List[Dict[str, Any]]:
+        return list(self.dictionaries.values())
+    
+    def update(self, dict_id: str, dict_data: Dict[str, Any]) -> Dict[str, Any] | None:
+        if dict_id in self.dictionaries:
+            self.dictionaries[dict_id].update(dict_data)
+            return self.dictionaries[dict_id]
+        return None
+    
+    def delete(self, dict_id: str) -> bool:
+        if dict_id in self.dictionaries:
+            del self.dictionaries[dict_id]
+            return True
+        return False
+    
+    def count(self) -> int:
+        return len(self.dictionaries)
+
+
+@pytest.fixture
+def mock_user_repo():
+    """Provide a mock user repository."""
+    return MockUserRepository()
+
+
+@pytest.fixture
+def mock_session_repo():
+    """Provide a mock session repository."""
+    return MockSessionRepository()
+
+
+@pytest.fixture
+def mock_game_repo():
+    """Provide a mock game repository."""
+    return MockGameRepository()
+
+
+@pytest.fixture
+def mock_dict_repo():
+    """Provide a mock dictionary repository."""
+    return MockDictionaryRepository()
+
+
+@pytest.fixture
+def auth_service(mock_user_repo):
+    """Provide an AuthService with mock repository."""
+    return AuthService(mock_user_repo)
+
+
+@pytest.fixture
+def session_service(mock_session_repo, mock_user_repo):
+    """Provide a SessionService with mock repositories."""
+    return SessionService(mock_session_repo, mock_user_repo)
+
+
+@pytest.fixture
+def game_service(mock_game_repo, mock_session_repo, mock_dict_repo):
+    """Provide a GameService with mock repositories."""
+    return GameService(mock_game_repo, mock_session_repo, mock_dict_repo)
+
+
+@pytest.fixture
+def stats_service(mock_user_repo, mock_session_repo, mock_game_repo):
+    """Provide a StatsService with mock repositories."""
+    return StatsService(mock_user_repo, mock_session_repo, mock_game_repo)
+
+
+@pytest.fixture
+def dict_service(mock_dict_repo):
+    """Provide a DictionaryService with mock repository."""
+    return DictionaryService(mock_dict_repo)
+
+
+@pytest.fixture
+def test_user_data():
+    """Provide test user data."""
+    return {
+        "email": "test@example.com",
+        "password": "Test123!",
+        "nickname": "TestUser"
+    }
+
+
+@pytest.fixture
+def test_admin_data():
+    """Provide test admin user data."""
+    return {
+        "email": "admin@example.com",
+        "password": "Admin123!",
+        "nickname": "AdminUser"
+    }
+
+
+@pytest.fixture
+def sample_session_params():
+    """Provide sample session parameters."""
+    return {
+        "max_misses": 6,
+        "max_time_sec": 300,
+        "dictionary_id": "dict_ro_basic",
+        "seed": 12345
+    }
+
+
+@pytest.fixture
+def client():
+    """Provide a FastAPI test client."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def auth_token(client, test_user_data):
+    """Provide an authentication token for a regular user."""
+    # Register user
+    response = client.post("/api/auth/register", json=test_user_data)
+    assert response.status_code == 201
+    
+    # Login
+    response = client.post("/api/auth/login", json={
+        "email": test_user_data["email"],
+        "password": test_user_data["password"]
+    })
+    assert response.status_code == 200
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+def admin_token(client, test_admin_data):
+    """Provide an authentication token for an admin user."""
+    # First user is always admin
+    response = client.post("/api/auth/register", json=test_admin_data)
+    assert response.status_code == 201
+    
+    # Login
+    response = client.post("/api/auth/login", json={
+        "email": test_admin_data["email"],
+        "password": test_admin_data["password"]
+    })
+    assert response.status_code == 200
+    return response.json()["access_token"]
+
+
+@pytest.fixture
+def created_user(auth_service, test_user_data):
+    """Provide a created user for testing."""
+    return auth_service.register_user(
+        email=test_user_data["email"],
+        password=test_user_data["password"],
+        nickname=test_user_data.get("nickname")
+    )
+
+
+@pytest.fixture
+def created_session(session_service, created_user, sample_session_params):
+    """Provide a created session for testing."""
+    return session_service.create_session(
+        user_id=created_user["user_id"],
+        num_games=5,
+        params=sample_session_params
+    )
+
+
+@pytest.fixture
+def created_game(game_service, created_session, created_user):
+    """Provide a created game for testing."""
+    return game_service.create_game(
+        session_id=created_session["session_id"],
+        user_id=created_user["user_id"]
+    )
