@@ -10,13 +10,14 @@ class ErrorCode(str, Enum):
     """Standardized error codes for the API."""
     
     # Authentication & Authorization (1xxx)
-    INVALID_CREDENTIALS = "AUTH_1001"
-    TOKEN_EXPIRED = "AUTH_1002"
-    TOKEN_INVALID = "AUTH_1003"
-    UNAUTHORIZED = "AUTH_1004"
-    FORBIDDEN = "AUTH_1005"
-    USER_ALREADY_EXISTS = "AUTH_1006"
-    USER_NOT_FOUND = "AUTH_1007"
+    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
+    TOKEN_EXPIRED = "TOKEN_EXPIRED"
+    INVALID_TOKEN = "INVALID_TOKEN"
+    UNAUTHORIZED = "UNAUTHORIZED"
+    FORBIDDEN = "FORBIDDEN"
+    USER_EXISTS = "USER_EXISTS"
+    USER_NOT_FOUND = "USER_NOT_FOUND"
+    INVALID_PASSWORD = "INVALID_PASSWORD"
     
     # Session Management (2xxx)
     SESSION_NOT_FOUND = "SESSION_2001"
@@ -54,7 +55,7 @@ class ErrorCode(str, Enum):
 class ErrorResponse(BaseModel):
     """Standardized error response format."""
     
-    error: str  # Error code from ErrorCode enum
+    error_code: str  # Error code from ErrorCode enum
     message: str  # Human-readable error message
     detail: Optional[str] = None  # Additional detail about the error
     request_id: Optional[str] = None  # Request tracking ID
@@ -72,7 +73,7 @@ class ErrorResponse(BaseModel):
     ) -> "ErrorResponse":
         """Factory method to create error responses."""
         return cls(
-            error=error_code.value,
+            error_code=error_code.value,
             message=message,
             detail=detail,
             request_id=request_id,
@@ -83,7 +84,7 @@ class ErrorResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "error": "GAME_3003",
+                "error_code": "GAME_3003",
                 "message": "Game already finished",
                 "detail": "Cannot make guesses on a completed game",
                 "request_id": "req_abc123",

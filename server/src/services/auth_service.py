@@ -7,7 +7,8 @@ from ..utils.auth_utils import hash_password, verify_password, create_access_tok
 from ..exceptions import (
     UserAlreadyExistsException,
     InvalidCredentialsException,
-    UserNotFoundException
+    UserNotFoundException,
+    InvalidPasswordException
 )
 
 
@@ -19,6 +20,16 @@ class AuthService:
         
     def register_user(self, email: str, password: str, nickname: Optional[str] = None) -> Dict[str, Any]:
         """Register a new user."""
+        # Validate password
+        if len(password) < 8:
+            raise InvalidPasswordException("Password must be at least 8 characters")
+        if not any(c.isupper() for c in password):
+            raise InvalidPasswordException("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in password):
+            raise InvalidPasswordException("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in password):
+            raise InvalidPasswordException("Password must contain at least one number")
+        
         # Check if email already exists
         if self.user_repo.get_by_email(email):
             raise UserAlreadyExistsException(email)

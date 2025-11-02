@@ -57,7 +57,7 @@ class TokenInvalidException(AuthenticationException):
     
     def __init__(self, detail: Optional[str] = None):
         super().__init__(
-            ErrorCode.TOKEN_INVALID,
+            ErrorCode.INVALID_TOKEN,
             "Invalid authentication token",
             detail
         )
@@ -91,10 +91,22 @@ class UserAlreadyExistsException(HangmanException):
     
     def __init__(self, username: str):
         super().__init__(
-            ErrorCode.USER_ALREADY_EXISTS,
+            ErrorCode.USER_EXISTS,
             f"User '{username}' already exists",
             "Please choose a different username",
             status_code=409
+        )
+
+
+class InvalidPasswordException(HangmanException):
+    """Raised when password doesn't meet requirements."""
+    
+    def __init__(self, detail: Optional[str] = None):
+        super().__init__(
+            ErrorCode.INVALID_PASSWORD,
+            "Password does not meet requirements",
+            detail or "Password must be at least 8 characters with uppercase, lowercase, and number",
+            status_code=400
         )
 
 

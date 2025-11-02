@@ -34,7 +34,7 @@ from .utils.logging_config import setup_logging
 
 # Import exception handlers
 from .error_handlers import register_exception_handlers
-from .exceptions import UnauthorizedException, ForbiddenException
+from .exceptions import UnauthorizedException, ForbiddenException, TokenInvalidException
 
 # Import middleware
 from .middleware import RequestIDMiddleware, LoggingMiddleware
@@ -91,8 +91,8 @@ app.add_middleware(LoggingMiddleware)
 # 3. Request ID middleware (innermost - closest to endpoint)
 app.add_middleware(RequestIDMiddleware)
 
-# Security
-security = HTTPBearer()
+# Security - auto_error=False so we can return 401 instead of 403
+security = HTTPBearer(auto_error=False)
 
 # Initialize repositories (singletons)
 user_repo = UserRepository()
@@ -110,8 +110,10 @@ dict_service = DictionaryService(dict_repo)
 
 # ============= DEPENDENCIES =============
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)):
     """Dependency to get current authenticated user."""
+    if not credentials:
+        raise UnauthorizedException("Authorization header required")
     try:
         payload = decode_token(credentials.credentials)
         user_id = payload.get("sub")
@@ -170,7 +172,8 @@ def login(req: LoginRequest):
     """Login and get access token."""
     try:
         result = auth_service.login_user(req.email, req.password)
-        return result
+        # Add token_type for standard OAuth2 response
+        return {**result, "token_type": "bearer"}
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
 
@@ -181,11 +184,12 @@ def refresh(req: RefreshRequest):
     try:
         payload = decode_token(req.refresh_token)
         if payload.get("type") != "refresh":
-            raise HTTPException(status_code=401, detail="Invalid refresh token")
+            raise TokenInvalidException("Invalid refresh token type")
         result = auth_service.refresh_token(payload["sub"])
-        return result
+        # Return refresh token back with new access token and token_type
+        return {**result, "refresh_token": req.refresh_token, "token_type": "bearer"}
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid refresh token")
+        raise TokenInvalidException("Invalid or expired refresh token")
 
 
 @app.get("/api/v1/users/me")

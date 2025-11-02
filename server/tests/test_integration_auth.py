@@ -204,7 +204,7 @@ class TestAuthMiddleware:
             json={
                 "num_games": 3,
                 "dictionary_id": "dict_ro_basic",
-                "difficulty": "medium",
+                "difficulty": "normal",
                 "language": "ro",
                 "max_misses": 6,
                 "allow_word_guess": True
