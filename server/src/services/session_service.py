@@ -5,6 +5,12 @@ from typing import Dict, Any, List, Optional
 from ..repositories.session_repository import SessionRepository
 from ..repositories.dictionary_repository import DictionaryRepository
 from ..config import get_settings
+from ..exceptions import (
+    SessionNotFoundException,
+    SessionAccessDeniedException,
+    SessionAlreadyFinishedException,
+    MaxSessionsExceededException
+)
 
 settings = get_settings()
 
@@ -32,7 +38,7 @@ class SessionService:
         user_sessions = self.session_repo.get_by_user(user_id)
         active_sessions = [s for s in user_sessions if s["status"] == "ACTIVE"]
         if len(active_sessions) >= settings.max_sessions_per_user:
-            raise ValueError(f"Maximum {settings.max_sessions_per_user} active sessions per user")
+            raise MaxSessionsExceededException(settings.max_sessions_per_user)
         
         session_id = f"s_{self.session_repo.count() + 1}"
         
@@ -68,10 +74,10 @@ class SessionService:
         session = self.session_repo.get_by_id(session_id)
         
         if not session:
-            raise ValueError("Session not found")
+            raise SessionNotFoundException(session_id)
             
         if session["user_id"] != user_id:
-            raise PermissionError("Access denied")
+            raise SessionAccessDeniedException(session_id)
             
         return session
         

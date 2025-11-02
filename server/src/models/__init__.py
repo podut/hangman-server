@@ -5,6 +5,7 @@ from .session import CreateSessionRequest, SessionResponse
 from .game import GuessRequest, GameResponse, GuessResponse
 from .dictionary import DictionaryCreate, DictionaryUpdate, DictionaryResponse
 from .stats import UserStats, GlobalStats, LeaderboardEntry
+from .error import ErrorResponse, ErrorCode
 
 __all__ = [
     "RegisterRequest",
@@ -22,4 +23,6 @@ __all__ = [
     "UserStats",
     "GlobalStats",
     "LeaderboardEntry",
+    "ErrorResponse",
+    "ErrorCode",
 ]

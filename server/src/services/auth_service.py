@@ -4,6 +4,11 @@ from datetime import datetime
 from typing import Optional, Dict, Any
 from ..repositories.user_repository import UserRepository
 from ..utils.auth_utils import hash_password, verify_password, create_access_token
+from ..exceptions import (
+    UserAlreadyExistsException,
+    InvalidCredentialsException,
+    UserNotFoundException
+)
 
 
 class AuthService:
@@ -16,7 +21,7 @@ class AuthService:
         """Register a new user."""
         # Check if email already exists
         if self.user_repo.get_by_email(email):
-            raise ValueError("Email already registered")
+            raise UserAlreadyExistsException(email)
             
         # Generate user ID
         user_id = f"u_{self.user_repo.count() + 1}"
@@ -49,7 +54,7 @@ class AuthService:
         user = self.user_repo.get_by_email(email)
         
         if not user or not verify_password(password, user["password"]):
-            raise ValueError("Invalid credentials")
+            raise InvalidCredentialsException()
             
         access_token = create_access_token({"sub": user["user_id"]})
         refresh_token = create_access_token({"sub": user["user_id"], "type": "refresh"})
@@ -72,9 +77,9 @@ class AuthService:
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get user by ID (excluding password)."""
         user = self.user_repo.get_by_id(user_id)
-        if user:
-            return {k: v for k, v in user.items() if k != "password"}
-        return None
+        if not user:
+            raise UserNotFoundException(user_id)
+        return {k: v for k, v in user.items() if k != "password"}
         
     def is_admin(self, user_id: str) -> bool:
         """Check if user is admin."""

@@ -13,7 +13,7 @@ from .config import settings
 # Import models
 from .models import (
     RegisterRequest, LoginRequest, RefreshRequest,
-    CreateSessionRequest, GuessRequest
+    CreateSessionRequest, GuessRequest, ErrorResponse
 )
 
 # Import repositories
@@ -30,6 +30,10 @@ from .services import (
 
 # Import utils
 from .utils.auth_utils import decode_token
+
+# Import exception handlers
+from .error_handlers import register_exception_handlers
+from .exceptions import UnauthorizedException, ForbiddenException
 
 # Configure logging
 logging.basicConfig(
@@ -55,8 +59,20 @@ app = FastAPI(
     title="Hangman Server API",
     version="1.0.0",
     description="Hangman game server with modular architecture",
-    debug=settings.debug
+    debug=settings.debug,
+    responses={
+        400: {"model": ErrorResponse, "description": "Bad Request"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        403: {"model": ErrorResponse, "description": "Forbidden"},
+        404: {"model": ErrorResponse, "description": "Not Found"},
+        409: {"model": ErrorResponse, "description": "Conflict"},
+        422: {"model": ErrorResponse, "description": "Validation Error"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error"},
+    }
 )
+
+# Register exception handlers
+register_exception_handlers(app)
 
 # CORS middleware with config
 app.add_middleware(
@@ -92,19 +108,20 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
         payload = decode_token(credentials.credentials)
         user_id = payload.get("sub")
         if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
+            raise UnauthorizedException("Invalid token: missing user ID")
         user = auth_service.get_user_by_id(user_id)
         if not user:
-            raise HTTPException(status_code=401, detail="User not found")
+            raise UnauthorizedException("User not found")
         return user
-    except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except ValueError as e:
+        # decode_token raises ValueError for invalid tokens
+        raise UnauthorizedException(str(e))
 
 
 def get_admin_user(user=Depends(get_current_user)):
     """Dependency to ensure user is admin."""
     if not auth_service.is_admin(user["user_id"]):
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise ForbiddenException("Admin access required")
     return user
 
 
