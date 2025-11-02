@@ -45,3 +45,7 @@ class GameRepository:
     def get_all(self) -> List[dict]:
         """Get all games."""
         return list(self._games.values())
+        
+    def count(self) -> int:
+        """Get total number of games."""
+        return len(self._games)
