@@ -5,6 +5,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 from datetime import datetime
+import logging
+
+# Import config
+from .config import settings
 
 # Import models
 from .models import (
@@ -27,18 +31,38 @@ from .services import (
 # Import utils
 from .utils.auth_utils import decode_token
 
+# Configure logging
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper()),
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Validate configuration at startup
+try:
+    settings.validate_config()
+    logger.info("✓ Configuration validation passed")
+except ValueError as e:
+    logger.warning(f"⚠ Configuration validation warnings: {e}")
+    if not settings.debug:
+        logger.error("Configuration errors in production mode - refusing to start")
+        raise  # Fail fast in production
+    else:
+        logger.info("Running in DEBUG mode - proceeding despite validation warnings")
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Hangman Server API",
     version="1.0.0",
-    description="Hangman game server with modular architecture"
+    description="Hangman game server with modular architecture",
+    debug=settings.debug
 )
 
-# CORS middleware
+# CORS middleware with config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.get_cors_origins_list(),
+    allow_credentials=settings.cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -358,8 +382,38 @@ def get_dictionary_words(dictionary_id: str, sample: Optional[int] = None, admin
         raise HTTPException(status_code=404, detail=str(e))
 
 
+# ============= STARTUP/SHUTDOWN =============
+
+@app.on_event("startup")
+async def startup_event():
+    """Log configuration on startup."""
+    logger.info("=" * 60)
+    logger.info("Hangman Server Starting")
+    logger.info("=" * 60)
+    logger.info(f"Debug Mode: {settings.debug}")
+    logger.info(f"Server: {settings.server_host}:{settings.server_port}")
+    logger.info(f"CORS Origins: {settings.get_cors_origins_list()}")
+    logger.info(f"JWT Algorithm: {settings.jwt_algorithm}")
+    logger.info(f"Token Expiry: {settings.access_token_expire_minutes} minutes")
+    logger.info(f"Max Sessions/User: {settings.max_sessions_per_user}")
+    logger.info(f"Max Games/Session: {settings.max_games_per_session}")
+    logger.info(f"Log Level: {settings.log_level}")
+    logger.info("=" * 60)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up on shutdown."""
+    logger.info("Hangman Server Shutting Down")
+
+
 # ============= MAIN =============
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app, 
+        host=settings.server_host, 
+        port=settings.server_port,
+        log_level=settings.log_level.lower()
+    )

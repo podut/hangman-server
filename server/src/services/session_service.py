@@ -4,6 +4,9 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from ..repositories.session_repository import SessionRepository
 from ..repositories.dictionary_repository import DictionaryRepository
+from ..config import get_settings
+
+settings = get_settings()
 
 
 class SessionService:
@@ -25,6 +28,12 @@ class SessionService:
         seed: Optional[int]
     ) -> Dict[str, Any]:
         """Create a new game session."""
+        # Check max sessions per user limit
+        user_sessions = self.session_repo.get_by_user(user_id)
+        active_sessions = [s for s in user_sessions if s["status"] == "ACTIVE"]
+        if len(active_sessions) >= settings.max_sessions_per_user:
+            raise ValueError(f"Maximum {settings.max_sessions_per_user} active sessions per user")
+        
         session_id = f"s_{self.session_repo.count() + 1}"
         
         session_data = {
