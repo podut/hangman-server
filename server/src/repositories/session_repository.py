@@ -36,3 +36,17 @@ class SessionRepository:
     def count(self) -> int:
         """Count total sessions."""
         return len(self._sessions)
+    
+    def delete(self, session_id: str) -> bool:
+        """Delete session by ID. Returns True if deleted, False if not found."""
+        if session_id in self._sessions:
+            del self._sessions[session_id]
+            return True
+        return False
+    
+    def delete_by_user(self, user_id: str) -> int:
+        """Delete all sessions for a user. Returns number of sessions deleted."""
+        sessions_to_delete = [sid for sid, s in self._sessions.items() if s["user_id"] == user_id]
+        for session_id in sessions_to_delete:
+            del self._sessions[session_id]
+        return len(sessions_to_delete)

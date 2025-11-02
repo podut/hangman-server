@@ -334,6 +334,28 @@ class GameService:
             "total_pages": (total + page_size - 1) // page_size
         }
         
+    def get_game_history(self, game_id: str, user_id: str) -> Dict[str, Any]:
+        """Get guess history for a game."""
+        game = self.game_repo.get_by_id(game_id)
+        
+        if not game:
+            raise ValueError("Game not found")
+            
+        session = self.session_repo.get_by_id(game["session_id"])
+        
+        if not session or session["user_id"] != user_id:
+            raise PermissionError("Access denied")
+        
+        guesses = self.game_repo.get_guesses(game_id)
+        
+        return {
+            "game_id": game_id,
+            "session_id": game["session_id"],
+            "status": game["status"],
+            "guesses": guesses,
+            "total_guesses": len(guesses)
+        }
+    
     def _calculate_final_score(self, game: dict):
         """Calculate composite score for finished game."""
         created = datetime.fromisoformat(game["created_at"].replace("Z", "+00:00"))

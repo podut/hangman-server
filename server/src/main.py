@@ -13,7 +13,8 @@ from .config import settings
 # Import models
 from .models import (
     RegisterRequest, LoginRequest, RefreshRequest,
-    CreateSessionRequest, GuessRequest, ErrorResponse
+    CreateSessionRequest, GuessRequest, ErrorResponse,
+    ForgotPasswordRequest, ResetPasswordRequest
 )
 
 # Import repositories
@@ -37,7 +38,7 @@ from .error_handlers import register_exception_handlers
 from .exceptions import UnauthorizedException, ForbiddenException, TokenInvalidException
 
 # Import middleware
-from .middleware import RequestIDMiddleware, LoggingMiddleware
+from .middleware import RequestIDMiddleware, LoggingMiddleware, RateLimiterMiddleware
 
 # Configure logging with structured format
 setup_logging(log_level=settings.log_level, log_format=settings.log_format)
@@ -85,10 +86,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 2. Logging middleware
+# 2. Rate limiter (before logging to avoid logging rate-limited requests)
+app.add_middleware(RateLimiterMiddleware)
+
+# 3. Logging middleware
 app.add_middleware(LoggingMiddleware)
 
-# 3. Request ID middleware (innermost - closest to endpoint)
+# 4. Request ID middleware (innermost - closest to endpoint)
 app.add_middleware(RequestIDMiddleware)
 
 # Security - auto_error=False so we can return 401 instead of 403
@@ -192,10 +196,50 @@ def refresh(req: RefreshRequest):
         raise TokenInvalidException("Invalid or expired refresh token")
 
 
+@app.post("/api/v1/auth/forgot-password")
+def forgot_password(req: ForgotPasswordRequest):
+    """Request password reset token."""
+    return auth_service.request_password_reset(req.email)
+
+
+@app.post("/api/v1/auth/reset-password")
+def reset_password(req: ResetPasswordRequest):
+    """Reset password using token."""
+    return auth_service.reset_password(req.token, req.new_password)
+
+
 @app.get("/api/v1/users/me")
 def get_profile(user=Depends(get_current_user)):
     """Get current user profile."""
     return user
+
+
+@app.delete("/api/v1/users/me", status_code=204)
+def delete_account(user=Depends(get_current_user)):
+    """Delete user account and all associated data (GDPR compliance)."""
+    user_id = user["user_id"]
+    
+    # Cascade delete all user data
+    # 1. Get all user sessions to delete games
+    user_sessions = session_repo.get_by_user(user_id)
+    session_ids = [s["session_id"] for s in user_sessions]
+    
+    # 2. Delete all games for those sessions (includes guesses)
+    games_deleted = game_repo.delete_by_user(user_id, session_ids)
+    logger.info(f"Deleted {games_deleted} games for user {user_id}")
+    
+    # 3. Delete all sessions
+    sessions_deleted = session_repo.delete_by_user(user_id)
+    logger.info(f"Deleted {sessions_deleted} sessions for user {user_id}")
+    
+    # 4. Delete user account
+    user_deleted = user_repo.delete(user_id)
+    if not user_deleted:
+        logger.error(f"Failed to delete user {user_id}")
+        raise HTTPException(status_code=500, detail="Failed to delete user account")
+    
+    logger.info(f"User account {user_id} deleted successfully")
+    return None  # 204 No Content
 
 
 # ============= SESSION ENDPOINTS =============
@@ -278,6 +322,63 @@ def list_session_games(
         raise HTTPException(status_code=403, detail=str(e))
 
 
+@app.get("/api/v1/sessions/{session_id}/stats")
+def get_session_stats(session_id: str, user=Depends(get_current_user)):
+    """Get statistics for a session."""
+    try:
+        # Verify session exists and user has access
+        session = session_service.get_session(session_id, user["user_id"])
+        
+        # Get all games for session
+        session_games = game_repo.get_by_session(session_id)
+        
+        # Filter finished games (won or lost, not aborted)
+        finished_games = [g for g in session_games if g["status"] in ["WON", "LOST"]]
+        
+        if not finished_games:
+            return {
+                "session_id": session_id,
+                "games_total": session["num_games"],
+                "games_finished": 0,
+                "games_won": 0,
+                "games_lost": 0,
+                "games_aborted": 0,
+                "win_rate": 0.0,
+                "avg_total_guesses": 0.0,
+                "avg_wrong_letters": 0.0,
+                "avg_time_sec": 0.0,
+                "composite_score": 0.0
+            }
+        
+        # Calculate statistics
+        wins = sum(1 for g in finished_games if g["status"] == "WON")
+        losses = sum(1 for g in finished_games if g["status"] == "LOST")
+        aborted = sum(1 for g in session_games if g["status"] == "ABORTED")
+        
+        total_guesses = sum(g["total_guesses"] for g in finished_games)
+        total_wrong = sum(len(g["wrong_letters"]) for g in finished_games)
+        total_time = sum(g.get("time_seconds", 0) for g in finished_games)
+        total_score = sum(g.get("composite_score", 0) for g in finished_games)
+        
+        return {
+            "session_id": session_id,
+            "games_total": session["num_games"],
+            "games_finished": len(finished_games),
+            "games_won": wins,
+            "games_lost": losses,
+            "games_aborted": aborted,
+            "win_rate": (wins / len(finished_games) * 100) if finished_games else 0.0,
+            "avg_total_guesses": total_guesses / len(finished_games) if finished_games else 0.0,
+            "avg_wrong_letters": total_wrong / len(finished_games) if finished_games else 0.0,
+            "avg_time_sec": total_time / len(finished_games) if finished_games else 0.0,
+            "composite_score": total_score
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
 # ============= GAME ENDPOINTS =============
 
 @app.post("/api/v1/sessions/{session_id}/games", status_code=201)
@@ -317,6 +418,18 @@ def make_guess(session_id: str, game_id: str, req: GuessRequest, user=Depends(ge
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+
+@app.get("/api/v1/sessions/{session_id}/games/{game_id}/history")
+def get_game_history(session_id: str, game_id: str, user=Depends(get_current_user)):
+    """Get guess history for a game."""
+    try:
+        result = game_service.get_game_history(game_id, user["user_id"])
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
 

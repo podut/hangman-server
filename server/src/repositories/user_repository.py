@@ -36,3 +36,18 @@ class UserRepository:
     def exists(self, user_id: str) -> bool:
         """Check if user exists."""
         return user_id in self._users
+    
+    def update(self, user_id: str, updates: dict) -> Optional[dict]:
+        """Update user data."""
+        if user_id not in self._users:
+            return None
+        
+        self._users[user_id].update(updates)
+        return self._users[user_id]
+    
+    def delete(self, user_id: str) -> bool:
+        """Delete user by ID. Returns True if deleted, False if not found."""
+        if user_id in self._users:
+            del self._users[user_id]
+            return True
+        return False

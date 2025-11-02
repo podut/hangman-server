@@ -122,6 +122,18 @@ class UserNotFoundException(HangmanException):
         )
 
 
+class InvalidTokenException(HangmanException):
+    """Raised when password reset token is invalid or expired."""
+    
+    def __init__(self, detail: Optional[str] = None):
+        super().__init__(
+            ErrorCode.INVALID_TOKEN,
+            "Invalid or expired reset token",
+            detail or "The password reset token is invalid or has expired",
+            status_code=400
+        )
+
+
 # Session Exceptions
 
 class SessionNotFoundException(HangmanException):

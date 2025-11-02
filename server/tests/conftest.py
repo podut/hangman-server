@@ -5,6 +5,7 @@ Provides reusable test setup including mock repositories, services, and FastAPI 
 
 import pytest
 import sys
+import os
 from pathlib import Path
 from typing import Dict, Any, List
 from datetime import datetime
@@ -13,7 +14,20 @@ from fastapi.testclient import TestClient
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Set DEBUG mode for tests to bypass validation
+os.environ["DEBUG"] = "true"
+
 from src.main import app
+from src.config import settings
+
+
+@pytest.fixture(autouse=True)
+def disable_rate_limiting():
+    """Disable rate limiting for all tests."""
+    original_value = settings.disable_rate_limiting
+    settings.disable_rate_limiting = True
+    yield
+    settings.disable_rate_limiting = original_value
 from src.repositories.user_repository import UserRepository
 from src.repositories.session_repository import SessionRepository
 from src.repositories.game_repository import GameRepository
@@ -304,6 +318,29 @@ def admin_token(client, test_admin_data):
     })
     assert response.status_code == 200
     return response.json()["access_token"]
+
+
+@pytest.fixture
+def test_user(client, request):
+    """Provide a registered test user (via API) with unique email per test."""
+    # Use test name to generate unique email
+    test_name = request.node.name
+    email = f"testuser_{test_name}@example.com"
+    
+    # Register a test user via the API
+    register_response = client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": email,
+            "password": "TestPassword123",
+            "nickname": "TestUser"
+        }
+    )
+    assert register_response.status_code == 201
+    user_data = register_response.json()
+    user_data["email"] = email  # Ensure email is in returned data
+    user_data["password"] = "TestPassword123"  # Add password for tests
+    return user_data
 
 
 @pytest.fixture

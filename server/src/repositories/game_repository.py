@@ -1,6 +1,7 @@
 """Game repository: in-memory game storage."""
 
 from typing import Dict, Optional, List
+from copy import deepcopy
 
 
 class GameRepository:
@@ -18,11 +19,12 @@ class GameRepository:
         
     def get_by_id(self, game_id: str) -> Optional[dict]:
         """Get game by ID."""
-        return self._games.get(game_id)
+        game = self._games.get(game_id)
+        return deepcopy(game) if game else None
         
     def get_by_session(self, session_id: str) -> List[dict]:
         """Get all games for a session."""
-        return [g for g in self._games.values() if g["session_id"] == session_id]
+        return [deepcopy(g) for g in self._games.values() if g["session_id"] == session_id]
         
     def update(self, game_id: str, updates: dict) -> Optional[dict]:
         """Update game data."""
@@ -49,3 +51,28 @@ class GameRepository:
     def count(self) -> int:
         """Get total number of games."""
         return len(self._games)
+    
+    def delete(self, game_id: str) -> bool:
+        """Delete game by ID. Returns True if deleted, False if not found."""
+        if game_id in self._games:
+            del self._games[game_id]
+            if game_id in self._guesses:
+                del self._guesses[game_id]
+            return True
+        return False
+    
+    def delete_by_session(self, session_id: str) -> int:
+        """Delete all games for a session. Returns number of games deleted."""
+        games_to_delete = [gid for gid, g in self._games.items() if g["session_id"] == session_id]
+        for game_id in games_to_delete:
+            del self._games[game_id]
+            if game_id in self._guesses:
+                del self._guesses[game_id]
+        return len(games_to_delete)
+    
+    def delete_by_user(self, user_id: str, session_ids: list) -> int:
+        """Delete all games for a user via session IDs. Returns number of games deleted."""
+        count = 0
+        for session_id in session_ids:
+            count += self.delete_by_session(session_id)
+        return count

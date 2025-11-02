@@ -1,6 +1,6 @@
 """Pydantic models for API requests and responses."""
 
-from .user import RegisterRequest, LoginRequest, RefreshRequest, UserResponse
+from .user import RegisterRequest, LoginRequest, RefreshRequest, UserResponse, ForgotPasswordRequest, ResetPasswordRequest
 from .session import CreateSessionRequest, SessionResponse
 from .game import GuessRequest, GameResponse, GuessResponse
 from .dictionary import DictionaryCreate, DictionaryUpdate, DictionaryResponse
@@ -11,6 +11,8 @@ __all__ = [
     "RegisterRequest",
     "LoginRequest",
     "RefreshRequest",
+    "ForgotPasswordRequest",
+    "ResetPasswordRequest",
     "UserResponse",
     "CreateSessionRequest",
     "SessionResponse",
