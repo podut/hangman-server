@@ -2,8 +2,8 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from server.src.main import app
-from server.src.repositories import UserRepository
+from src.main import app
+from src.repositories import UserRepository
 
 
 client = TestClient(app)
@@ -12,7 +12,7 @@ client = TestClient(app)
 @pytest.fixture
 def user_repo():
     """Get user repository instance."""
-    from server.src.main import user_repo
+    from src.main import user_repo
     return user_repo
 
 

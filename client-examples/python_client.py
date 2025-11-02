@@ -156,18 +156,22 @@ class HangmanClient:
         return resp.json()
 
 def demo():
+    import random
     client = HangmanClient()
     
-    # Register and login
+    # Register and login with unique email
+    email = f"player{random.randint(1000, 9999)}@test.com"
+    password = "Password123"
+    
     print("=== Registering user ===")
     try:
-        reg_result = client.register("player@test.com", "password123", "TestPlayer")
+        reg_result = client.register(email, password, "TestPlayer")
         print(f"Registered: {reg_result.get('user_id')}, Is Admin: {reg_result.get('is_admin')}")
     except:
         print("User already exists")
     
     print("\n=== Logging in ===")
-    login_data = client.login("player@test.com", "password123")
+    login_data = client.login(email, password)
     print(f"Logged in successfully")
     
     # Create session with 1 game

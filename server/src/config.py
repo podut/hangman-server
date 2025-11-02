@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     # Testing
     disable_rate_limiting: bool = False
     
+    # TLS/SSL Configuration (optional for development)
+    ssl_enabled: bool = False
+    ssl_keyfile: str = ""  # Path to SSL key file (e.g., "certs/key.pem")
+    ssl_certfile: str = ""  # Path to SSL cert file (e.g., "certs/cert.pem")
+    
     # Brute-force Protection
     max_login_attempts: int = 5
     login_lockout_duration_minutes: int = 15

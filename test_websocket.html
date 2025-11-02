@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test Client - Hangman Server</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+        }
+        
+        .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 30px;
+        }
+        
+        .panel {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        
+        .panel h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            margin-right: 10px;
+            margin-top: 10px;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        button.secondary {
+            background: #6c757d;
+        }
+        
+        button.danger {
+            background: #dc3545;
+        }
+        
+        button.success {
+            background: #28a745;
+        }
+        
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+        
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border-radius: 6px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 4px 0;
+            border-bottom: 1px solid #333;
+        }
+        
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+        
+        .log-time {
+            color: #858585;
+            margin-right: 10px;
+        }
+        
+        .log-type {
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        
+        .log-type.sent {
+            color: #4ec9b0;
+        }
+        
+        .log-type.received {
+            color: #569cd6;
+        }
+        
+        .log-type.error {
+            color: #f48771;
+        }
+        
+        .log-type.info {
+            color: #dcdcaa;
+        }
+        
+        .message-templates {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .template-btn {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+            
+            .message-templates {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎮 Hangman WebSocket Test Client</h1>
+            <p>Test real-time bidirectional communication with Hangman Server API</p>
+        </div>
+        
+        <div class="content">
+            <!-- Left Panel: Authentication & Connection -->
+            <div class="panel">
+                <h2>🔐 Authentication & Connection</h2>
+                
+                <div class="form-group">
+                    <label>Server URL:</label>
+                    <input type="text" id="serverUrl" value="ws://localhost:8000/ws" placeholder="ws://localhost:8000/ws">
+                </div>
+                
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="email" value="test@example.com" placeholder="user@example.com">
+                </div>
+                
+                <div class="form-group">
+                    <label>Password:</label>
+                    <input type="password" id="password" value="Test123!" placeholder="Password">
+                </div>
+                
+                <button onclick="register()">📝 Register</button>
+                <button onclick="login()" class="success">🔓 Login</button>
+                <button onclick="connectWebSocket()" class="secondary" id="connectBtn" disabled>🔌 Connect WebSocket</button>
+                <button onclick="disconnect()" class="danger" id="disconnectBtn" disabled>❌ Disconnect</button>
+                
+                <div id="status" class="status disconnected">
+                    ⚫ Disconnected
+                </div>
+                
+                <div class="form-group">
+                    <label>Access Token:</label>
+                    <input type="text" id="token" readonly placeholder="Login to get token">
+                </div>
+            </div>
+            
+            <!-- Right Panel: Messages -->
+            <div class="panel">
+                <h2>💬 Send Messages</h2>
+                
+                <div class="form-group">
+                    <label>Message Type:</label>
+                    <input type="text" id="messageType" value="ping" placeholder="ping, subscribe, message">
+                </div>
+                
+                <div class="form-group">
+                    <label>Message Data (JSON):</label>
+                    <input type="text" id="messageData" value="{}" placeholder='{"key": "value"}'>
+                </div>
+                
+                <button onclick="sendMessage()" id="sendBtn" disabled>📤 Send Message</button>
+                <button onclick="clearLog()" class="secondary">🗑️ Clear Log</button>
+                
+                <div class="message-templates">
+                    <button onclick="sendTemplate('ping')" class="template-btn secondary" disabled id="pingBtn">🏓 Ping</button>
+                    <button onclick="sendTemplate('subscribe')" class="template-btn secondary" disabled id="subscribeBtn">📡 Subscribe</button>
+                    <button onclick="sendTemplate('message')" class="template-btn secondary" disabled id="messageBtn">💌 Message</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Full Width Log Panel -->
+        <div style="padding: 0 30px 30px 30px;">
+            <div class="panel">
+                <h2>📋 Connection Log</h2>
+                <div id="log" class="log"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let accessToken = null;
+        const API_BASE = 'http://localhost:8000/api/v1';
+        
+        function log(type, message, data = null) {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            
+            let dataStr = '';
+            if (data) {
+                try {
+                    dataStr = ' | ' + JSON.stringify(data);
+                } catch (e) {
+                    dataStr = ' | ' + String(data);
+                }
+            }
+            
+            entry.innerHTML = `<span class="log-time">${time}</span><span class="log-type ${type.toLowerCase()}">${type.toUpperCase()}</span>${message}${dataStr}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            log('info', 'Log cleared');
+        }
+        
+        function updateStatus(status, connected = false) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = 'status ' + status;
+            
+            const icons = {
+                disconnected: '⚫',
+                connected: '🟢',
+                connecting: '🟡'
+            };
+            
+            const labels = {
+                disconnected: 'Disconnected',
+                connected: 'Connected',
+                connecting: 'Connecting...'
+            };
+            
+            statusDiv.textContent = icons[status] + ' ' + labels[status];
+            
+            // Update button states
+            document.getElementById('connectBtn').disabled = connected || !accessToken;
+            document.getElementById('disconnectBtn').disabled = !connected;
+            document.getElementById('sendBtn').disabled = !connected;
+            document.getElementById('pingBtn').disabled = !connected;
+            document.getElementById('subscribeBtn').disabled = !connected;
+            document.getElementById('messageBtn').disabled = !connected;
+        }
+        
+        async function register() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                log('info', 'Registering user...', { email });
+                
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: email,
+                        password: password,
+                        nickname: email.split('@')[0]
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    log('info', '✅ Registration successful!', data);
+                    alert('Registration successful! Now you can login.');
+                } else {
+                    log('error', '❌ Registration failed', data);
+                    if (response.status === 409) {
+                        alert('User already exists. Try logging in instead.');
+                    }
+                }
+            } catch (error) {
+                log('error', '❌ Registration error', error.message);
+                alert('Registration error: ' + error.message);
+            }
+        }
+        
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                log('info', 'Logging in...', { email });
+                
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    accessToken = data.access_token;
+                    document.getElementById('token').value = accessToken;
+                    document.getElementById('connectBtn').disabled = false;
+                    
+                    log('info', '✅ Login successful!', { user_id: data.user_id });
+                    alert('Login successful! You can now connect to WebSocket.');
+                } else {
+                    log('error', '❌ Login failed', data);
+                    alert('Login failed: ' + (data.detail || 'Invalid credentials'));
+                }
+            } catch (error) {
+                log('error', '❌ Login error', error.message);
+                alert('Login error: ' + error.message);
+            }
+        }
+        
+        function connectWebSocket() {
+            if (!accessToken) {
+                alert('Please login first!');
+                return;
+            }
+            
+            const serverUrl = document.getElementById('serverUrl').value;
+            const wsUrl = `${serverUrl}?token=${accessToken}`;
+            
+            log('info', 'Connecting to WebSocket...', { url: serverUrl });
+            updateStatus('connecting');
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    log('info', '✅ WebSocket connected!');
+                    updateStatus('connected', true);
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log('received', 'Message received', data);
+                    } catch (e) {
+                        log('received', 'Raw message', event.data);
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    log('error', '❌ WebSocket error', error);
+                    updateStatus('disconnected');
+                };
+                
+                ws.onclose = (event) => {
+                    log('info', '⚫ WebSocket closed', { code: event.code, reason: event.reason });
+                    updateStatus('disconnected');
+                    ws = null;
+                };
+                
+            } catch (error) {
+                log('error', '❌ Connection failed', error.message);
+                updateStatus('disconnected');
+            }
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                log('info', 'Disconnecting...');
+            }
+        }
+        
+        function sendMessage() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket is not connected!');
+                return;
+            }
+            
+            const type = document.getElementById('messageType').value;
+            let data = {};
+            
+            try {
+                data = JSON.parse(document.getElementById('messageData').value);
+            } catch (e) {
+                alert('Invalid JSON in message data!');
+                return;
+            }
+            
+            const message = { type, data };
+            
+            ws.send(JSON.stringify(message));
+            log('sent', 'Message sent', message);
+        }
+        
+        function sendTemplate(type) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket is not connected!');
+                return;
+            }
+            
+            const templates = {
+                ping: { type: 'ping', data: {} },
+                subscribe: { type: 'subscribe', data: { channel: 'games' } },
+                message: { type: 'message', data: { text: 'Hello from test client!' } }
+            };
+            
+            const message = templates[type];
+            ws.send(JSON.stringify(message));
+            log('sent', `Template sent: ${type}`, message);
+        }
+        
+        // Initialize
+        log('info', '🚀 WebSocket Test Client initialized');
+        log('info', 'Step 1: Register or Login');
+        log('info', 'Step 2: Click "Connect WebSocket"');
+        log('info', 'Step 3: Send messages using templates or custom data');
+        updateStatus('disconnected');
+    </script>
+</body>
+</html>

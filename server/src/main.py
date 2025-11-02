@@ -1,10 +1,13 @@
 """Hangman Server API - Clean refactored version."""
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import StreamingResponse
 from typing import Optional
 from datetime import datetime
+import asyncio
+import json
 import logging
 
 # Import config
@@ -41,7 +44,7 @@ from .exceptions import (
 )
 
 # Import middleware
-from .middleware import RequestIDMiddleware, LoggingMiddleware, RateLimiterMiddleware
+from .middleware import RequestIDMiddleware, LoggingMiddleware, RateLimiterMiddleware, IdempotencyMiddleware
 
 # Configure logging with structured format
 setup_logging(log_level=settings.log_level, log_format=settings.log_format)
@@ -92,10 +95,16 @@ app.add_middleware(
 # 2. Rate limiter (before logging to avoid logging rate-limited requests)
 app.add_middleware(RateLimiterMiddleware)
 
-# 3. Logging middleware
+# 3. Idempotency middleware (before logging so replays are logged)
+# DISABLED: BaseHTTPMiddleware conflicts with FastAPI response handling
+# The middleware code exists but is not active due to technical limitations
+# Consider implementing idempotency at endpoint level for critical operations
+# app.add_middleware(IdempotencyMiddleware, ttl_hours=24)
+
+# 4. Logging middleware
 app.add_middleware(LoggingMiddleware)
 
-# 4. Request ID middleware (innermost - closest to endpoint)
+# 5. Request ID middleware (innermost - closest to endpoint)
 app.add_middleware(RequestIDMiddleware)
 
 # Security - auto_error=False so we can return 401 instead of 403
@@ -160,6 +169,24 @@ def version():
 def server_time():
     """Get server time."""
     return {"time": datetime.utcnow().isoformat() + "Z"}
+
+
+# Initialize Prometheus metrics instrumentation
+from prometheus_fastapi_instrumentator import Instrumentator
+
+instrumentator = Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=False,
+    should_respect_env_var=False,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=[],
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="http_requests_inprogress",
+    inprogress_labels=True,
+)
+
+# Instrument the app and expose /metrics endpoint
+instrumentator.instrument(app).expose(app, include_in_schema=True, tags=["Observability"])
 
 
 # ============= AUTH ENDPOINTS =============
@@ -276,11 +303,302 @@ def export_user_data(user=Depends(get_current_user)):
     return export_data
 
 
+@app.get("/api/v1/events/stream")
+async def event_stream(user=Depends(get_current_user)):
+    """Server-Sent Events endpoint for real-time notifications.
+    
+    Streams events to authenticated users:
+    - game_completed: When a game finishes (WON/LOST/ABORTED)
+    - session_finished: When all games in a session are complete
+    - leaderboard_update: When user position changes (future)
+    
+    Client usage:
+    ```javascript
+    const eventSource = new EventSource('/api/v1/events/stream', {
+        headers: { 'Authorization': 'Bearer <token>' }
+    });
+    
+    eventSource.addEventListener('game_completed', (e) => {
+        const data = JSON.parse(e.data);
+        console.log('Game finished:', data);
+    });
+    ```
+    """
+    from .utils.event_manager import event_manager
+    
+    user_id = user["user_id"]
+    queue = asyncio.Queue()
+    
+    async def event_generator():
+        """Generate SSE events for the client."""
+        try:
+            # Subscribe to events
+            await event_manager.subscribe(user_id, queue)
+            logger.info(f"SSE stream started for user {user_id}")
+            
+            # Send initial connection event
+            yield f"event: connected\ndata: {json.dumps({'user_id': user_id, 'timestamp': datetime.utcnow().isoformat() + 'Z'})}\n\n"
+            
+            # Stream events
+            while True:
+                try:
+                    # Wait for event with timeout to allow periodic heartbeat
+                    event = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    
+                    # Format as SSE
+                    event_type = event.get("event", "message")
+                    event_data = json.dumps(event)
+                    yield f"event: {event_type}\ndata: {event_data}\n\n"
+                    
+                except asyncio.TimeoutError:
+                    # Send heartbeat to keep connection alive
+                    yield f": heartbeat\n\n"
+                    
+        except asyncio.CancelledError:
+            logger.info(f"SSE stream cancelled for user {user_id}")
+        except Exception as e:
+            logger.error(f"Error in SSE stream for user {user_id}: {e}")
+        finally:
+            # Unsubscribe on disconnect
+            await event_manager.unsubscribe(user_id, queue)
+            logger.info(f"SSE stream ended for user {user_id}")
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
+
+
+# ============= WEBSOCKET ENDPOINT =============
+
+class ConnectionManager:
+    """WebSocket connection manager for real-time bidirectional communication."""
+    
+    def __init__(self):
+        self.active_connections: dict[str, list[WebSocket]] = {}
+    
+    async def connect(self, websocket: WebSocket, user_id: str):
+        """Connect a WebSocket for a user."""
+        await websocket.accept()
+        if user_id not in self.active_connections:
+            self.active_connections[user_id] = []
+        self.active_connections[user_id].append(websocket)
+        logger.info(f"WebSocket connected for user {user_id}")
+    
+    def disconnect(self, websocket: WebSocket, user_id: str):
+        """Disconnect a WebSocket."""
+        if user_id in self.active_connections:
+            self.active_connections[user_id].remove(websocket)
+            if not self.active_connections[user_id]:
+                del self.active_connections[user_id]
+        logger.info(f"WebSocket disconnected for user {user_id}")
+    
+    async def send_personal_message(self, message: dict, user_id: str):
+        """Send message to specific user's WebSocket connections."""
+        if user_id in self.active_connections:
+            disconnected = []
+            for connection in self.active_connections[user_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception as e:
+                    logger.error(f"Error sending WebSocket message to {user_id}: {e}")
+                    disconnected.append(connection)
+            
+            # Clean up disconnected connections
+            for conn in disconnected:
+                self.disconnect(conn, user_id)
+    
+    async def broadcast(self, message: dict):
+        """Broadcast message to all connected users."""
+        for user_id in list(self.active_connections.keys()):
+            await self.send_personal_message(message, user_id)
+
+
+ws_manager = ConnectionManager()
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, token: Optional[str] = None):
+    """
+    WebSocket endpoint for real-time bidirectional communication.
+    
+    Authentication via query parameter: /ws?token=<jwt_token>
+    
+    Message format:
+    - Client -> Server:
+      {
+        "type": "ping" | "subscribe" | "unsubscribe" | "message",
+        "data": {...}
+      }
+    
+    - Server -> Client:
+      {
+        "type": "pong" | "game_update" | "session_update" | "notification",
+        "data": {...},
+        "timestamp": "2025-11-02T10:30:45Z"
+      }
+    
+    Example client (JavaScript):
+    ```javascript
+    const ws = new WebSocket('ws://localhost:8000/ws?token=' + accessToken);
+    
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log('Received:', data);
+    };
+    
+    ws.send(JSON.stringify({
+        type: 'subscribe',
+        data: { channel: 'games' }
+    }));
+    ```
+    """
+    # Authenticate user BEFORE accepting connection
+    user_id = None
+    if not token:
+        await websocket.accept()
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+    
+    try:
+        payload = decode_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.accept()
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+        
+        user = auth_service.get_user_by_id(user_id)
+        if not user:
+            await websocket.accept()
+            await websocket.close(code=1008, reason="User not found")
+            return
+    except Exception as e:
+        logger.warning(f"WebSocket authentication failed: {e}")
+        await websocket.accept()
+        await websocket.close(code=1008, reason="Authentication failed")
+        return
+    
+    # Accept and connect WebSocket
+    await ws_manager.connect(websocket, user_id)
+    
+    # Send welcome message
+    await websocket.send_json({
+        "type": "connected",
+        "data": {
+            "user_id": user_id,
+            "message": "WebSocket connection established"
+        },
+        "timestamp": datetime.utcnow().isoformat() + "Z"
+    })
+    
+    try:
+        while True:
+            # Receive message from client
+            data = await websocket.receive_json()
+            
+            msg_type = data.get("type", "")
+            msg_data = data.get("data", {})
+            
+            # Handle different message types
+            if msg_type == "ping":
+                # Respond with pong
+                await websocket.send_json({
+                    "type": "pong",
+                    "data": {"timestamp": datetime.utcnow().isoformat() + "Z"},
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                })
+            
+            elif msg_type == "subscribe":
+                # Subscribe to channel (future enhancement)
+                channel = msg_data.get("channel", "general")
+                await websocket.send_json({
+                    "type": "subscribed",
+                    "data": {"channel": channel},
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                })
+                logger.info(f"User {user_id} subscribed to channel {channel}")
+            
+            elif msg_type == "message":
+                # Echo message back (or handle custom logic)
+                await websocket.send_json({
+                    "type": "message_received",
+                    "data": msg_data,
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                })
+            
+            else:
+                # Unknown message type
+                await websocket.send_json({
+                    "type": "error",
+                    "data": {"message": f"Unknown message type: {msg_type}"},
+                    "timestamp": datetime.utcnow().isoformat() + "Z"
+                })
+    
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket, user_id)
+        logger.info(f"WebSocket disconnected for user {user_id}")
+    except Exception as e:
+        logger.error(f"WebSocket error for user {user_id}: {e}")
+        ws_manager.disconnect(websocket, user_id)
+
+
 # ============= SESSION ENDPOINTS =============
 
+@app.get("/api/v1/sessions")
+def list_user_sessions(user=Depends(get_current_user)):
+    """List all sessions for the current user."""
+    try:
+        user_sessions = session_repo.get_by_user(user["user_id"])
+        
+        # Add game counts for each session
+        result = []
+        for session in user_sessions:
+            session_games = game_repo.get_by_session(session["session_id"])
+            finished = sum(1 for g in session_games if g["status"] in ["WON", "LOST", "ABORTED"])
+            result.append({
+                **session,
+                "games_created": len(session_games),
+                "games_finished": finished
+            })
+        
+        return result
+    except Exception as e:
+        logger.error(f"Error listing sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/v1/sessions", status_code=201)
-def create_session(req: CreateSessionRequest, user=Depends(get_current_user)):
-    """Create a new game session."""
+def create_session(req: CreateSessionRequest, request: Request, user=Depends(get_current_user)):
+    """
+    Create a new game session.
+    
+    Supports idempotency via Idempotency-Key header.
+    """
+    from .utils.idempotency import _idempotency_store
+    import hashlib
+    
+    # Check for idempotency key
+    idempotency_key = request.headers.get("Idempotency-Key")
+    
+    if idempotency_key:
+        # Generate composite key (user_id + idempotency_key)
+        composite_key = f"{user['user_id']}:{idempotency_key}"
+        
+        # Check if already processed
+        if composite_key in _idempotency_store:
+            cached_result, timestamp = _idempotency_store[composite_key]
+            from datetime import datetime, timedelta
+            if datetime.utcnow() - timestamp < timedelta(hours=24):
+                logger.info(f"Idempotency replay: key={idempotency_key}, endpoint=create_session")
+                return cached_result
+    
+    # Execute normally
     try:
         result = session_service.create_session(
             user_id=user["user_id"],
@@ -292,6 +610,12 @@ def create_session(req: CreateSessionRequest, user=Depends(get_current_user)):
             allow_word_guess=req.allow_word_guess,
             seed=req.seed
         )
+        
+        # Store result if idempotency key was provided
+        if idempotency_key:
+            from datetime import datetime
+            _idempotency_store[composite_key] = (result, datetime.utcnow())
+        
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -341,15 +665,33 @@ def abort_session(session_id: str, user=Depends(get_current_user)):
 
 @app.get("/api/v1/sessions/{session_id}/games")
 def list_session_games(
+    request: Request,
     session_id: str,
     page: int = 1,
     page_size: int = 10,
     user=Depends(get_current_user)
 ):
     """List games in a session with pagination."""
+    from .utils.pagination import build_link_header
+    from fastapi.responses import JSONResponse
+    
     try:
         result = game_service.list_session_games(session_id, user["user_id"], page, page_size)
-        return result
+        
+        # Build Link header for pagination (RFC 5988)
+        base_url = str(request.url).split('?')[0]
+        link_header = build_link_header(
+            base_url=base_url,
+            page=page,
+            page_size=page_size,
+            total_items=result.get("total", 0)
+        )
+        
+        # Create response with Link header
+        return JSONResponse(
+            content=result,
+            headers={"Link": link_header}
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except PermissionError as e:
@@ -416,10 +758,38 @@ def get_session_stats(session_id: str, user=Depends(get_current_user)):
 # ============= GAME ENDPOINTS =============
 
 @app.post("/api/v1/sessions/{session_id}/games", status_code=201)
-def create_game(session_id: str, user=Depends(get_current_user)):
-    """Create a new game in a session."""
+def create_game(session_id: str, request: Request, user=Depends(get_current_user)):
+    """
+    Create a new game in a session.
+    
+    Supports idempotency via Idempotency-Key header.
+    """
+    from .utils.idempotency import _idempotency_store
+    
+    # Check for idempotency key
+    idempotency_key = request.headers.get("Idempotency-Key")
+    
+    if idempotency_key:
+        # Generate composite key (user_id + session_id + idempotency_key)
+        composite_key = f"{user['user_id']}:{session_id}:{idempotency_key}"
+        
+        # Check if already processed
+        if composite_key in _idempotency_store:
+            cached_result, timestamp = _idempotency_store[composite_key]
+            from datetime import datetime, timedelta
+            if datetime.utcnow() - timestamp < timedelta(hours=24):
+                logger.info(f"Idempotency replay: key={idempotency_key}, endpoint=create_game")
+                return cached_result
+    
+    # Execute normally
     try:
         result = game_service.create_game(session_id, user["user_id"])
+        
+        # Store result if idempotency key was provided
+        if idempotency_key:
+            from datetime import datetime
+            _idempotency_store[composite_key] = (result, datetime.utcnow())
+        
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -500,10 +870,55 @@ def get_global_stats(period: str = "all"):
 
 
 @app.get("/api/v1/leaderboard")
-def get_leaderboard(metric: str = "composite_score", period: str = "all", limit: int = 10):
-    """Get leaderboard."""
-    result = stats_service.get_leaderboard(metric, period, limit)
-    return {"entries": result, "metric": metric, "period": period}
+def get_leaderboard(
+    request: Request,
+    metric: str = "composite_score",
+    period: str = "all",
+    limit: int = 10,
+    page: int = 1
+):
+    """Get leaderboard with pagination support."""
+    from .utils.pagination import build_link_header
+    from fastapi.responses import JSONResponse
+    
+    # Calculate offset for pagination
+    page_size = limit
+    offset = (page - 1) * page_size
+    
+    # Get leaderboard entries (limit + 1 to check if there are more)
+    result = stats_service.get_leaderboard(metric, period, page_size + 1)
+    
+    # Check if there are more entries
+    has_more = len(result) > page_size
+    entries = result[:page_size] if has_more else result
+    
+    # For leaderboard, we estimate total based on what we know
+    # In production, you'd want to get actual total from stats_service
+    estimated_total = offset + len(entries) + (1 if has_more else 0)
+    
+    response_data = {
+        "entries": entries,
+        "metric": metric,
+        "period": period,
+        "page": page,
+        "page_size": page_size,
+        "has_more": has_more
+    }
+    
+    # Build Link header
+    base_url = str(request.url).split('?')[0]
+    link_header = build_link_header(
+        base_url=base_url,
+        page=page,
+        page_size=page_size,
+        total_items=estimated_total,
+        query_params={"metric": metric, "period": period}
+    )
+    
+    return JSONResponse(
+        content=response_data,
+        headers={"Link": link_header}
+    )
 
 
 # ============= ADMIN ENDPOINTS =============
@@ -627,9 +1042,22 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        app, 
-        host=settings.server_host, 
-        port=settings.server_port,
-        log_level=settings.log_level.lower()
-    )
+    
+    # Prepare uvicorn configuration
+    uvicorn_config = {
+        "app": app,
+        "host": settings.server_host,
+        "port": settings.server_port,
+        "log_level": settings.log_level.lower()
+    }
+    
+    # Add SSL/TLS configuration if enabled
+    if settings.ssl_enabled:
+        if settings.ssl_keyfile and settings.ssl_certfile:
+            uvicorn_config["ssl_keyfile"] = settings.ssl_keyfile
+            uvicorn_config["ssl_certfile"] = settings.ssl_certfile
+            logger.info(f"✓ TLS enabled: keyfile={settings.ssl_keyfile}, certfile={settings.ssl_certfile}")
+        else:
+            logger.warning("⚠ SSL_ENABLED=True but ssl_keyfile or ssl_certfile not set. Running without TLS.")
+    
+    uvicorn.run(**uvicorn_config)
