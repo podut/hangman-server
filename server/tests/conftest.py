@@ -4,20 +4,26 @@ Provides reusable test setup including mock repositories, services, and FastAPI 
 """
 
 import pytest
+import sys
+from pathlib import Path
 from typing import Dict, Any, List
 from datetime import datetime
 from fastapi.testclient import TestClient
-from server.src.main import app
-from server.src.repositories.user_repository import UserRepository
-from server.src.repositories.session_repository import SessionRepository
-from server.src.repositories.game_repository import GameRepository
-from server.src.repositories.dictionary_repository import DictionaryRepository
-from server.src.services.auth_service import AuthService
-from server.src.services.session_service import SessionService
-from server.src.services.game_service import GameService
-from server.src.services.stats_service import StatsService
-from server.src.services.dictionary_service import DictionaryService
-from server.src.utils.auth_utils import create_access_token
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.main import app
+from src.repositories.user_repository import UserRepository
+from src.repositories.session_repository import SessionRepository
+from src.repositories.game_repository import GameRepository
+from src.repositories.dictionary_repository import DictionaryRepository
+from src.services.auth_service import AuthService
+from src.services.session_service import SessionService
+from src.services.game_service import GameService
+from src.services.stats_service import StatsService
+from src.services.dictionary_service import DictionaryService
+from src.utils.auth_utils import create_access_token
 
 
 class MockUserRepository(UserRepository):
@@ -100,6 +106,7 @@ class MockGameRepository(GameRepository):
     
     def __init__(self):
         self.games: Dict[str, Dict[str, Any]] = {}
+        self._guesses: Dict[str, List[Dict[str, Any]]] = {}
         self.next_id = 1
     
     def create(self, game_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -312,14 +319,23 @@ def created_session(session_service, created_user, sample_session_params):
     return session_service.create_session(
         user_id=created_user["user_id"],
         num_games=5,
-        params=sample_session_params
+        dictionary_id=sample_session_params.get("dictionary_id", "dict_ro_basic"),
+        difficulty=sample_session_params.get("difficulty", "medium"),
+        language=sample_session_params.get("language", "ro"),
+        max_misses=sample_session_params.get("max_misses", 6),
+        allow_word_guess=sample_session_params.get("allow_word_guess", True),
+        seed=sample_session_params.get("seed")
     )
 
 
 @pytest.fixture
-def created_game(game_service, created_session, created_user):
+def created_game(game_service, created_session, created_user, mock_game_repo):
     """Provide a created game for testing."""
-    return game_service.create_game(
+    result = game_service.create_game(
         session_id=created_session["session_id"],
         user_id=created_user["user_id"]
     )
+    # Fetch full game including secret from repo and return a copy
+    # to avoid mutation issues when tests update the game
+    full_game = mock_game_repo.get_by_id(result["game_id"])
+    return dict(full_game)

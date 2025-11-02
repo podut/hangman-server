@@ -4,8 +4,14 @@ Tests game_utils (normalize, update_pattern, calculate_score) and auth_utils.
 """
 
 import pytest
-from server.src.utils.game_utils import normalize, update_pattern, calculate_score
-from server.src.utils.auth_utils import hash_password, verify_password, create_access_token, decode_token
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.utils.game_utils import normalize, update_pattern, calculate_score
+from src.utils.auth_utils import hash_password, verify_password, create_access_token, decode_token
 
 
 @pytest.mark.unit

@@ -4,10 +4,10 @@ Unit tests for Hangman game logic.
 import sys
 from pathlib import Path
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from main import normalize, update_pattern, calculate_score
+from src.utils.game_utils import normalize, update_pattern, calculate_score
 
 
 def test_normalize():

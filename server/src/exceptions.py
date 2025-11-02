@@ -208,7 +208,7 @@ class InvalidGuessException(HangmanException):
     def __init__(self, reason: str):
         super().__init__(
             ErrorCode.INVALID_GUESS,
-            "Invalid guess",
+            f"Invalid guess: {reason}",
             reason,
             status_code=400
         )

@@ -34,6 +34,12 @@ class SessionService:
         seed: Optional[int]
     ) -> Dict[str, Any]:
         """Create a new game session."""
+        # Validate parameters
+        if num_games <= 0:
+            raise ValueError("num_games must be positive")
+        if max_misses <= 0:
+            raise ValueError("max_misses must be positive")
+        
         # Check max sessions per user limit
         user_sessions = self.session_repo.get_by_user(user_id)
         active_sessions = [s for s in user_sessions if s["status"] == "ACTIVE"]
@@ -57,17 +63,14 @@ class SessionService:
             "status": "ACTIVE",
             "created_at": datetime.utcnow().isoformat() + "Z",
             "finished_at": None,
-            "games_created": 0
+            "games_created": 0,
+            "games_won": 0,
+            "games_lost": 0
         }
         
         self.session_repo.create(session_data)
         
-        return {
-            "session_id": session_id,
-            "num_games": num_games,
-            "status": "ACTIVE",
-            "created_at": session_data["created_at"]
-        }
+        return session_data
         
     def get_session(self, session_id: str, user_id: str) -> Dict[str, Any]:
         """Get session details."""
@@ -96,6 +99,45 @@ class SessionService:
             "status": "ABORTED",
             "finished_at": datetime.utcnow().isoformat() + "Z"
         }
+        
+        self.session_repo.update(session_id, updates)
+        
+        return {**session, **updates}
+    
+    def update_session_status(self, session_id: str, status: str) -> Dict[str, Any]:
+        """Update session status."""
+        updates = {"status": status}
+        if status in ["COMPLETED", "ABORTED"]:
+            updates["finished_at"] = datetime.utcnow().isoformat() + "Z"
+        
+        self.session_repo.update(session_id, updates)
+        session = self.session_repo.get_by_id(session_id)
+        return session
+    
+    def increment_games_created(self, session_id: str) -> Dict[str, Any]:
+        """Increment the games_created counter."""
+        session = self.session_repo.get_by_id(session_id)
+        if not session:
+            raise SessionNotFoundException(session_id)
+        
+        updates = {"games_created": session.get("games_created", 0) + 1}
+        self.session_repo.update(session_id, updates)
+        
+        return {**session, **updates}
+    
+    def update_session_stats(self, session_id: str, games_won: int = None, games_lost: int = None, total_score: float = None) -> Dict[str, Any]:
+        """Update session statistics."""
+        session = self.session_repo.get_by_id(session_id)
+        if not session:
+            raise SessionNotFoundException(session_id)
+        
+        updates = {}
+        if games_won is not None:
+            updates["games_won"] = games_won
+        if games_lost is not None:
+            updates["games_lost"] = games_lost
+        if total_score is not None:
+            updates["total_score"] = total_score
         
         self.session_repo.update(session_id, updates)
         

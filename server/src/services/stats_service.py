@@ -69,7 +69,7 @@ class StatsService:
             "games_won": wins,
             "games_lost": losses,
             "games_aborted": aborted,
-            "win_rate": wins / len(finished_games) if finished_games else 0.0,
+            "win_rate": (wins / len(finished_games) * 100) if finished_games else 0.0,
             "avg_guesses": total_guesses / len(finished_games) if finished_games else 0.0,
             "avg_score": total_score / len(finished_games) if finished_games else 0.0,
             "best_score": best_score,
@@ -186,18 +186,19 @@ class StatsService:
                 "games_won": stats["games_won"],
                 "win_rate": win_rate,
                 "avg_score": avg_score,
-                "composite_score": stats["total_score"]  # Total score for sorting
+                "total_score": stats["total_score"]  # Total score for sorting
             })
             
         # Sort by metric
-        if metric == "composite_score":
-            entries.sort(key=lambda x: x["composite_score"], reverse=True)
+        if metric == "total_score":
+            entries.sort(key=lambda x: x["total_score"], reverse=True)
         elif metric == "win_rate":
             entries.sort(key=lambda x: (x["win_rate"], x["total_games"]), reverse=True)
         elif metric == "total_games":
             entries.sort(key=lambda x: x["total_games"], reverse=True)
         else:
-            entries.sort(key=lambda x: x["composite_score"], reverse=True)
+            # Default to total_score
+            entries.sort(key=lambda x: x["total_score"], reverse=True)
             
         # Add rank and limit
         for i, entry in enumerate(entries[:limit], 1):

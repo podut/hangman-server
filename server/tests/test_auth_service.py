@@ -4,7 +4,13 @@ Tests user registration, login, token management, and error handling.
 """
 
 import pytest
-from server.src.exceptions import (
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.exceptions import (
     UserAlreadyExistsException,
     InvalidCredentialsException,
     UserNotFoundException

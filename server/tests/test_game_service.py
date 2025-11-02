@@ -4,7 +4,13 @@ Tests game creation, guess processing, game state management.
 """
 
 import pytest
-from server.src.exceptions import (
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from src.exceptions import (
     SessionNotFoundException,
     GameNotFoundException,
     GameAlreadyFinishedException,
@@ -27,8 +33,8 @@ class TestGameServiceCreation:
         assert result["game_id"].startswith("g_")
         assert result["session_id"] == created_session["session_id"]
         assert result["status"] == "IN_PROGRESS"
-        assert "secret" in result
-        assert result["length"] == len(result["secret"])
+        assert "secret" not in result  # Secret is hidden during active game
+        assert result["length"] > 0
         assert result["pattern"] == "*" * result["length"]
         assert result["guessed_letters"] == []
         assert result["wrong_letters"] == []
@@ -63,7 +69,12 @@ class TestGameServiceCreation:
         session = session_service.create_session(
             user_id=created_user["user_id"],
             num_games=1,
-            params=sample_session_params
+            dictionary_id="dict_ro_basic",
+            difficulty="medium",
+            language="ro",
+            max_misses=6,
+            allow_word_guess=True,
+            seed=None
         )
         
         # Create first game (should succeed)
@@ -90,7 +101,7 @@ class TestGameServiceGuesses:
         secret = created_game["secret"]
         letter = secret[0].lower()
         
-        result = game_service.guess_letter(
+        result = game_service.make_guess_letter(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             letter=letter
@@ -103,14 +114,18 @@ class TestGameServiceGuesses:
         
     def test_guess_letter_incorrect(self, game_service, created_game, created_user):
         """Test incorrect letter guess."""
-        result = game_service.guess_letter(
+        # Find a letter not in the secret word
+        secret = created_game["secret"]
+        wrong_letter = next(c for c in "qxz" if c not in secret.lower())
+        
+        result = game_service.make_guess_letter(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
-            letter="z"  # Unlikely to be in test words
+            letter=wrong_letter
         )
         
         assert result["success"] is False
-        assert "z" in result["wrong_letters"]
+        assert wrong_letter in result["wrong_letters"]
         assert result["remaining_misses"] == created_game["remaining_misses"] - 1
         
     def test_guess_letter_already_guessed(self, game_service, created_game, created_user):
@@ -118,7 +133,7 @@ class TestGameServiceGuesses:
         letter = created_game["secret"][0].lower()
         
         # First guess
-        game_service.guess_letter(
+        game_service.make_guess_letter(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             letter=letter
@@ -126,7 +141,7 @@ class TestGameServiceGuesses:
         
         # Second guess (same letter)
         with pytest.raises(InvalidGuessException, match="already been guessed"):
-            game_service.guess_letter(
+            game_service.make_guess_letter(
                 game_id=created_game["game_id"],
                 user_id=created_user["user_id"],
                 letter=letter
@@ -135,7 +150,7 @@ class TestGameServiceGuesses:
     def test_guess_letter_invalid_format(self, game_service, created_game, created_user):
         """Test guessing with invalid letter format."""
         with pytest.raises(InvalidGuessException, match="single letter"):
-            game_service.guess_letter(
+            game_service.make_guess_letter(
                 game_id=created_game["game_id"],
                 user_id=created_user["user_id"],
                 letter="ab"  # Multiple letters
@@ -143,7 +158,7 @@ class TestGameServiceGuesses:
             
     def test_guess_word_correct(self, game_service, created_game, created_user):
         """Test correct word guess."""
-        result = game_service.guess_word(
+        result = game_service.make_guess_word(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             word=created_game["secret"]
@@ -155,7 +170,7 @@ class TestGameServiceGuesses:
         
     def test_guess_word_incorrect(self, game_service, created_game, created_user):
         """Test incorrect word guess."""
-        result = game_service.guess_word(
+        result = game_service.make_guess_word(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             word="wrongword"
@@ -168,7 +183,7 @@ class TestGameServiceGuesses:
     def test_guess_on_finished_game(self, game_service, created_game, created_user):
         """Test guessing on already finished game."""
         # Win the game
-        game_service.guess_word(
+        game_service.make_guess_word(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             word=created_game["secret"]
@@ -176,7 +191,7 @@ class TestGameServiceGuesses:
         
         # Try to guess again
         with pytest.raises(GameAlreadyFinishedException):
-            game_service.guess_letter(
+            game_service.make_guess_letter(
                 game_id=created_game["game_id"],
                 user_id=created_user["user_id"],
                 letter="a"
@@ -189,7 +204,7 @@ class TestGameServiceStateManagement:
     
     def test_get_game_state(self, game_service, created_game, created_user):
         """Test getting game state."""
-        result = game_service.get_game_state(
+        result = game_service.get_game(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"]
         )
@@ -202,14 +217,14 @@ class TestGameServiceStateManagement:
     def test_get_game_state_finished_reveals_secret(self, game_service, created_game, created_user):
         """Test that finished game reveals secret."""
         # Win the game
-        game_service.guess_word(
+        game_service.make_guess_word(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             word=created_game["secret"]
         )
         
         # Get state
-        result = game_service.get_game_state(
+        result = game_service.get_game(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"]
         )
@@ -238,10 +253,11 @@ class TestGameServiceStateManagement:
             user_id=created_user["user_id"]
         )
         
-        result = game_service.get_session_games(
+        result = game_service.list_session_games(
             session_id=created_session["session_id"],
             user_id=created_user["user_id"]
         )
         
-        assert len(result) == 2
-        assert all(g["session_id"] == created_session["session_id"] for g in result)
+        assert len(result["games"]) == 2
+        assert all(g["session_id"] == created_session["session_id"] for g in result["games"])
+

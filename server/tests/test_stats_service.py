@@ -29,7 +29,7 @@ class TestStatsServiceUserStats:
     ):
         """Test getting stats after winning a game."""
         # Win the game
-        game_service.guess_word(
+        game_service.make_guess_word(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             word=created_game["secret"]
@@ -51,13 +51,18 @@ class TestStatsServiceUserStats:
     ):
         """Test getting stats after losing a game."""
         # Make wrong guesses until game is lost
-        for i in range(created_game["remaining_misses"]):
+        # Use a longer list of unlikely letters to ensure we have enough wrong guesses
+        unlikely_letters = "qxzjkvwfb"
+        for i, letter in enumerate(unlikely_letters):
             try:
-                game_service.guess_letter(
+                result = game_service.make_guess_letter(
                     game_id=created_game["game_id"],
                     user_id=created_user["user_id"],
-                    letter=chr(ord('z') - i)  # Use letters unlikely to be in word
+                    letter=letter
                 )
+                # Stop if game is finished
+                if result["status"] in ["WON", "LOST"]:
+                    break
             except Exception:
                 break
                 
@@ -78,7 +83,7 @@ class TestStatsServiceUserStats:
         session = session_service.create_session(
             user_id=created_user["user_id"],
             num_games=3,
-            params=sample_session_params
+            dictionary_id="dict_ro_basic", difficulty="medium", language="ro", max_misses=6, allow_word_guess=True, seed=None
         )
         
         # Create and win first game
@@ -86,10 +91,12 @@ class TestStatsServiceUserStats:
             session_id=session["session_id"],
             user_id=created_user["user_id"]
         )
-        game_service.guess_word(
+        # Get secret from mock repo since create_game doesn't return it
+        game1_full = game_service.game_repo.get_by_id(game1["game_id"])
+        game_service.make_guess_word(
             game_id=game1["game_id"],
             user_id=created_user["user_id"],
-            word=game1["secret"]
+            word=game1_full["secret"]
         )
         
         # Create and abort second game
@@ -128,7 +135,7 @@ class TestStatsServiceGlobalStats:
     ):
         """Test global stats after games are played."""
         # Win a game
-        game_service.guess_word(
+        game_service.make_guess_word(
             game_id=created_game["game_id"],
             user_id=created_user["user_id"],
             word=created_game["secret"]
@@ -171,16 +178,18 @@ class TestStatsServiceLeaderboard:
             session = session_service.create_session(
                 user_id=user["user_id"],
                 num_games=1,
-                params=sample_session_params
+                dictionary_id="dict_ro_basic", difficulty="medium", language="ro", max_misses=6, allow_word_guess=True, seed=None
             )
             game = game_service.create_game(
                 session_id=session["session_id"],
                 user_id=user["user_id"]
             )
-            game_service.guess_word(
+            # Get secret from mock repo since create_game doesn't return it
+            game_full = game_service.game_repo.get_by_id(game["game_id"])
+            game_service.make_guess_word(
                 game_id=game["game_id"],
                 user_id=user["user_id"],
-                word=game["secret"]
+                word=game_full["secret"]
             )
         
         result = stats_service.get_leaderboard(limit=10)
@@ -206,18 +215,21 @@ class TestStatsServiceLeaderboard:
             session = session_service.create_session(
                 user_id=user["user_id"],
                 num_games=1,
-                params=sample_session_params
+                dictionary_id="dict_ro_basic", difficulty="medium", language="ro", max_misses=6, allow_word_guess=True, seed=None
             )
             game = game_service.create_game(
                 session_id=session["session_id"],
                 user_id=user["user_id"]
             )
-            game_service.guess_word(
+            # Get secret from mock repo since create_game doesn't return it
+            game_full = game_service.game_repo.get_by_id(game["game_id"])
+            game_service.make_guess_word(
                 game_id=game["game_id"],
                 user_id=user["user_id"],
-                word=game["secret"]
+                word=game_full["secret"]
             )
         
         result = stats_service.get_leaderboard(limit=2)
         
         assert len(result) <= 2
+

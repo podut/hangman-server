@@ -7,6 +7,11 @@ from ..repositories.game_repository import GameRepository
 from ..repositories.session_repository import SessionRepository
 from ..repositories.dictionary_repository import DictionaryRepository
 from ..utils.game_utils import normalize, update_pattern, calculate_score
+from ..exceptions import (
+    InvalidGuessException,
+    GameAlreadyFinishedException,
+    GameNotFoundException
+)
 
 
 class GameService:
@@ -93,7 +98,7 @@ class GameService:
         return {k: v for k, v in game_data.items() if k != "secret"}
         
     def get_game(self, game_id: str, user_id: str) -> Dict[str, Any]:
-        """Get game state (without secret)."""
+        """Get game state (without secret for active games)."""
         game = self.game_repo.get_by_id(game_id)
         
         if not game:
@@ -103,8 +108,13 @@ class GameService:
         
         if session["user_id"] != user_id:
             raise PermissionError("Access denied")
-            
-        return {k: v for k, v in game.items() if k != "secret"}
+        
+        # Hide secret only for active games
+        if game["status"] == "IN_PROGRESS":
+            return {k: v for k, v in game.items() if k != "secret"}
+        else:
+            # Reveal secret for finished games
+            return game
         
     def make_guess_letter(
         self,
@@ -124,15 +134,15 @@ class GameService:
             raise PermissionError("Access denied")
             
         if game["status"] != "IN_PROGRESS":
-            raise ValueError("Game already finished")
+            raise GameAlreadyFinishedException(game_id, game["status"])
             
         letter = letter.strip().lower()
         
         if len(letter) != 1:
-            raise ValueError("Letter must be single character")
+            raise InvalidGuessException("Must be a single letter")
             
         if letter in game["guessed_letters"]:
-            raise ValueError("Letter already guessed")
+            raise InvalidGuessException("Letter has already been guessed")
             
         # Process guess
         game["guessed_letters"].append(letter)
@@ -177,12 +187,17 @@ class GameService:
         # Update game
         self.game_repo.update(game_id, game)
         
+        # Return game state with additional guess info
         return {
             "guess_index": guess_data["index"],
             "type": "LETTER",
             "value": letter,
             "correct": correct,
+            "success": correct,  # Alias for tests
+            "pattern": game["pattern"],
             "pattern_after": game["pattern"],
+            "guessed_letters": game["guessed_letters"],
+            "wrong_letters": game["wrong_letters"],
             "remaining_misses": game["remaining_misses"],
             "status": game["status"]
         }
@@ -205,10 +220,10 @@ class GameService:
             raise PermissionError("Access denied")
             
         if game["status"] != "IN_PROGRESS":
-            raise ValueError("Game already finished")
+            raise GameAlreadyFinishedException(game_id, game["status"])
             
         if not session["params"]["allow_word_guess"]:
-            raise ValueError("Word guessing not allowed")
+            raise InvalidGuessException("Word guessing not allowed")
             
         word = word.strip().lower()
         game["total_guesses"] += 1
@@ -253,7 +268,10 @@ class GameService:
             "type": "WORD",
             "value": word,
             "correct": correct,
+            "success": correct,  # Alias for tests
+            "pattern": game["pattern"],
             "pattern_after": game["pattern"],
+            "wrong_word_guesses": game["wrong_word_guesses"],
             "remaining_misses": game["remaining_misses"],
             "status": game["status"]
         }
