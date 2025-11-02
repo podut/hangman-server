@@ -1,0 +1,141 @@
+pipeline {
+    agent any
+    
+    environment {
+        // Python paths
+        PYTHON_CMD = 'python'
+        VENV_PATH = '.venv'
+        
+        // Application settings
+        SECRET_KEY = credentials('hangman-secret-key')
+        DEBUG = 'false'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 30, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '📥 Checking out code...'
+                checkout scm
+            }
+        }
+        
+        stage('Setup Environment') {
+            steps {
+                echo '🔧 Setting up Python environment...'
+                
+                bat """
+                    ${PYTHON_CMD} --version
+                    ${PYTHON_CMD} -m venv ${VENV_PATH}
+                    call ${VENV_PATH}\\Scripts\\activate.bat
+                    python -m pip install --upgrade pip
+                """
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                echo '📦 Installing dependencies...'
+                
+                bat """
+                    call ${VENV_PATH}\\Scripts\\activate.bat
+                    cd server
+                    pip install -r requirements.txt
+                """
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                echo '🧪 Running tests...'
+                
+                bat """
+                    call ${VENV_PATH}\\Scripts\\activate.bat
+                    pytest server/tests/test_new_features.py -v --tb=short ^
+                        --cov=server/src ^
+                        --cov-report=xml:coverage.xml ^
+                        --cov-report=html:coverage_html ^
+                        --junitxml=test-results.xml
+                """
+            }
+            
+            post {
+                always {
+                    junit 'test-results.xml'
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'coverage_html',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
+                }
+            }
+        }
+        
+        stage('WebSocket Tests') {
+            steps {
+                echo '🔌 Testing WebSocket...'
+                
+                bat """
+                    call ${VENV_PATH}\\Scripts\\activate.bat
+                    
+                    REM Start server in background
+                    start /B python -m uvicorn server.src.main:app --host 0.0.0.0 --port 8888
+                    
+                    REM Wait for startup
+                    timeout /t 5 /nobreak
+                    
+                    REM Run WebSocket test
+                    python test_websocket.py
+                    
+                    REM Kill server
+                    taskkill /F /IM python.exe /T
+                """
+            }
+        }
+        
+        stage('Generate OpenAPI') {
+            steps {
+                echo '📄 Generating OpenAPI specs...'
+                
+                bat """
+                    call ${VENV_PATH}\\Scripts\\activate.bat
+                    cd server
+                    python export_openapi.py
+                """
+                
+                archiveArtifacts artifacts: 'docs/openapi.yaml,docs/openapi.json'
+            }
+        }
+    }
+    
+    post {
+        success {
+            echo '✅ Pipeline succeeded!'
+        }
+        
+        failure {
+            echo '❌ Pipeline failed!'
+        }
+        
+        always {
+            echo '🧹 Cleaning up...'
+            cleanWs(
+                deleteDirs: true,
+                patterns: [
+                    [pattern: '.venv/**', type: 'INCLUDE'],
+                    [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                    [pattern: 'coverage_html/**', type: 'INCLUDE']
+                ]
+            )
+        }
+    }
+}

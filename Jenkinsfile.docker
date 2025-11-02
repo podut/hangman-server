@@ -1,0 +1,66 @@
+pipeline {
+    agent {
+        docker {
+            image 'python:3.10-slim'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
+    
+    environment {
+        SECRET_KEY = credentials('hangman-secret-key')
+        DEBUG = 'false'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 20, unit: 'MINUTES')
+        timestamps()
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                sh '''
+                    pip install --upgrade pip
+                    cd server
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+        
+        stage('Run Tests') {
+            steps {
+                sh '''
+                    pytest server/tests/test_new_features.py -v \
+                        --cov=server/src \
+                        --cov-report=xml \
+                        --junitxml=test-results.xml
+                '''
+            }
+            
+            post {
+                always {
+                    junit 'test-results.xml'
+                }
+            }
+        }
+        
+        stage('Coverage Report') {
+            steps {
+                sh 'coverage report'
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
