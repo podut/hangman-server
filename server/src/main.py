@@ -379,7 +379,19 @@ def create_dictionary(
 ):
     """Create a new dictionary (admin only)."""
     try:
-        result = dict_service.create_dictionary(name, words, description, language, difficulty)
+        # Generate dict_id from name (slugified)
+        import re
+        dict_id = "dict_" + re.sub(r'[^a-z0-9_]', '_', name.lower().replace(' ', '_'))
+        
+        dict_data = {
+            "dict_id": dict_id,
+            "name": name,
+            "words": words,
+            "description": description,
+            "language": language,
+            "difficulty": difficulty
+        }
+        result = dict_service.create_dictionary(dict_data)
         return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -395,7 +407,15 @@ def update_dictionary(
 ):
     """Update dictionary metadata (admin only)."""
     try:
-        result = dict_service.update_dictionary(dictionary_id, name, description, active)
+        updates = {}
+        if name is not None:
+            updates["name"] = name
+        if description is not None:
+            updates["description"] = description
+        if active is not None:
+            updates["active"] = active
+        
+        result = dict_service.update_dictionary(dictionary_id, updates)
         return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

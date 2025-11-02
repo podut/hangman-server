@@ -5,7 +5,7 @@ Tests the full HTTP request/response cycle for session management.
 
 import pytest
 from fastapi.testclient import TestClient
-from server.src.main import app
+from src.main import app
 
 
 @pytest.fixture
