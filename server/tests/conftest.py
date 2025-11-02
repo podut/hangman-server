@@ -144,35 +144,38 @@ class MockDictionaryRepository(DictionaryRepository):
     def __init__(self):
         self.dictionaries: Dict[str, Dict[str, Any]] = {
             "dict_ro_basic": {
-                "dict_id": "dict_ro_basic",
+                "dictionary_id": "dict_ro_basic",
                 "name": "Romanian Basic",
                 "language": "ro",
                 "words": ["python", "testing", "programming", "computer", "keyboard"],
-                "word_count": 5,
+                "active": True,
                 "created_at": datetime.utcnow().isoformat() + "Z"
             }
         }
         self.next_id = 2
     
     def create(self, dict_data: Dict[str, Any]) -> Dict[str, Any]:
-        self.dictionaries[dict_data["dict_id"]] = dict_data
+        self.dictionaries[dict_data["dictionary_id"]] = dict_data
         return dict_data
     
-    def get_by_id(self, dict_id: str) -> Dict[str, Any] | None:
-        return self.dictionaries.get(dict_id)
+    def get_by_id(self, dictionary_id: str) -> Dict[str, Any] | None:
+        return self.dictionaries.get(dictionary_id)
     
-    def get_all(self) -> List[Dict[str, Any]]:
-        return list(self.dictionaries.values())
+    def get_all(self, active_only: bool = False) -> List[Dict[str, Any]]:
+        dicts = list(self.dictionaries.values())
+        if active_only:
+            return [d for d in dicts if d.get("active", True)]
+        return dicts
     
-    def update(self, dict_id: str, dict_data: Dict[str, Any]) -> Dict[str, Any] | None:
-        if dict_id in self.dictionaries:
-            self.dictionaries[dict_id].update(dict_data)
-            return self.dictionaries[dict_id]
+    def update(self, dictionary_id: str, updates: Dict[str, Any]) -> Dict[str, Any] | None:
+        if dictionary_id in self.dictionaries:
+            self.dictionaries[dictionary_id].update(updates)
+            return self.dictionaries[dictionary_id]
         return None
     
-    def delete(self, dict_id: str) -> bool:
-        if dict_id in self.dictionaries:
-            del self.dictionaries[dict_id]
+    def delete(self, dictionary_id: str) -> bool:
+        if dictionary_id in self.dictionaries:
+            del self.dictionaries[dictionary_id]
             return True
         return False
     

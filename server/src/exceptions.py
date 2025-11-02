@@ -270,7 +270,7 @@ class DictionaryInvalidException(HangmanException):
     def __init__(self, reason: str):
         super().__init__(
             ErrorCode.DICTIONARY_INVALID,
-            "Dictionary is invalid",
+            f"Dictionary is invalid: {reason}",
             reason,
             status_code=400
         )
