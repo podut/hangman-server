@@ -30,16 +30,17 @@ from .services import (
 
 # Import utils
 from .utils.auth_utils import decode_token
+from .utils.logging_config import setup_logging
 
 # Import exception handlers
 from .error_handlers import register_exception_handlers
 from .exceptions import UnauthorizedException, ForbiddenException
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper()),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Import middleware
+from .middleware import RequestIDMiddleware, LoggingMiddleware
+
+# Configure logging with structured format
+setup_logging(log_level=settings.log_level, log_format=settings.log_format)
 logger = logging.getLogger(__name__)
 
 # Validate configuration at startup
@@ -74,7 +75,8 @@ app = FastAPI(
 # Register exception handlers
 register_exception_handlers(app)
 
-# CORS middleware with config
+# Add middleware (order matters - last added is executed first)
+# 1. CORS (outermost)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins_list(),
@@ -82,6 +84,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 2. Logging middleware
+app.add_middleware(LoggingMiddleware)
+
+# 3. Request ID middleware (innermost - closest to endpoint)
+app.add_middleware(RequestIDMiddleware)
 
 # Security
 security = HTTPBearer()

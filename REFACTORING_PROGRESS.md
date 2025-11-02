@@ -3,6 +3,7 @@
 ## ✅ Completat (60%)
 
 ### Structură Modulară Creată
+
 ```
 server/src/
 ├── models/          # ✅ Complete (5/5 files)
@@ -37,13 +38,15 @@ server/src/
 ## 🚧 În Lucru
 
 ### Files Created
+
 - ✅ 5 models (user, session, game, dictionary, stats)
 - ✅ 2 utils (auth_utils, game_utils)
 - ✅ 4 repositories (user, session, game, dictionary)
 - ✅ 2 services (auth, session)
-- ⚠️ 1 routes placeholder (__init__.py)
+- ⚠️ 1 routes placeholder (**init**.py)
 
 ### Commits
+
 ```
 35e396b - refactor(wip): Task 1.1 - Creare structura modulara
 ```
@@ -53,7 +56,9 @@ server/src/
 ### Priority 1: Complete Services (2-3 ore)
 
 #### `game_service.py` (120-150 linii)
+
 Metode necesare:
+
 ```python
 class GameService:
     def create_game(session_id, user_id) -> Dict
@@ -65,7 +70,9 @@ class GameService:
 ```
 
 #### `stats_service.py` (100-120 linii)
+
 Metode necesare:
+
 ```python
 class StatsService:
     def get_user_stats(user_id, period) -> UserStats
@@ -74,7 +81,9 @@ class StatsService:
 ```
 
 #### `dictionary_service.py` (80-100 linii)
+
 Metode necesare:
+
 ```python
 class DictionaryService:
     def list_dictionaries() -> List[Dict]
@@ -86,41 +95,53 @@ class DictionaryService:
 ### Priority 2: Extract Routes (3-4 ore)
 
 #### `routes/auth.py` (80-100 linii)
+
 Endpoints:
+
 - POST /api/v1/auth/register
 - POST /api/v1/auth/login
 - POST /api/v1/auth/refresh
 - GET /api/v1/users/me
 
 #### `routes/sessions.py` (60-80 linii)
+
 Endpoints:
+
 - POST /api/v1/sessions
 - GET /api/v1/sessions/{session_id}
 - POST /api/v1/sessions/{session_id}/abort
 - GET /api/v1/sessions/{session_id}/games
 
 #### `routes/games.py` (100-120 linii)
+
 Endpoints:
+
 - POST /api/v1/sessions/{sid}/games
 - GET /api/v1/sessions/{sid}/games/{gid}/state
 - POST /api/v1/sessions/{sid}/games/{gid}/guess
 - POST /api/v1/sessions/{sid}/games/{gid}/abort
 
 #### `routes/stats.py` (60-80 linii)
+
 Endpoints:
+
 - GET /api/v1/users/{uid}/stats
 - GET /api/v1/stats/global
 - GET /api/v1/leaderboard
 
 #### `routes/admin.py` (100-120 linii)
+
 Endpoints:
+
 - GET /api/v1/admin/dictionaries
 - POST /api/v1/admin/dictionaries
 - PATCH /api/v1/admin/dictionaries/{id}
 - GET /api/v1/admin/dictionaries/{id}/words
 
 #### `routes/utils.py` (30-40 linii)
+
 Endpoints:
+
 - GET /healthz
 - GET /version
 - GET /time
@@ -128,13 +149,14 @@ Endpoints:
 ### Priority 3: New main.py (50-80 linii)
 
 #### Structură țintă:
+
 ```python
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 # Import repositories
 from repositories import (
-    UserRepository, SessionRepository, 
+    UserRepository, SessionRepository,
     GameRepository, DictionaryRepository
 )
 
@@ -186,14 +208,14 @@ if __name__ == "__main__":
 
 ## 📊 Estimare Timp Rămas
 
-| Task | Estimare | Priority |
-|------|----------|----------|
-| Complete game_service.py | 1.5h | 🔴 High |
-| Complete stats_service.py | 1h | 🔴 High |
-| Complete dictionary_service.py | 0.5h | 🟡 Medium |
-| Extract routes (6 files) | 3h | 🔴 High |
-| New main.py + testing | 1h | 🔴 High |
-| **TOTAL** | **7h** | |
+| Task                           | Estimare | Priority  |
+| ------------------------------ | -------- | --------- |
+| Complete game_service.py       | 1.5h     | 🔴 High   |
+| Complete stats_service.py      | 1h       | 🔴 High   |
+| Complete dictionary_service.py | 0.5h     | 🟡 Medium |
+| Extract routes (6 files)       | 3h       | 🔴 High   |
+| New main.py + testing          | 1h       | 🔴 High   |
+| **TOTAL**                      | **7h**   |           |
 
 ## 🎯 Next Steps
 
