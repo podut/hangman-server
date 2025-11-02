@@ -90,7 +90,8 @@ class TestAuthServiceRegister:
     def test_register_with_very_long_password(self, auth_service):
         """Test that passwords longer than 72 bytes are truncated and work correctly."""
         # Create 200-character password (well over bcrypt's 72-byte limit)
-        long_password = "a" * 200
+        # Must meet password requirements: uppercase, lowercase, digit, special char
+        long_password = "Abc123!@#" + ("x" * 191)  # Total 200 chars
         email = "longpass@example.com"
         
         # Should not raise ValueError
