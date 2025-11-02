@@ -26,6 +26,20 @@ pipeline {
             }
         }
         
+        stage('Validate Secrets') {
+            steps {
+                script {
+                    echo '🔑 Validating required credentials...'
+                    
+                    if (!env.SECRET_KEY) {
+                        error "❌ Missing 'hangman-secret-key' credential! Please configure it in Jenkins Credentials."
+                    }
+                    
+                    echo '✅ All required credentials are present'
+                }
+            }
+        }
+        
         stage('Setup Environment') {
             steps {
                 echo '🔧 Setting up Python environment...'
@@ -127,15 +141,21 @@ pipeline {
         }
         
         always {
-            echo '🧹 Cleaning up...'
-            cleanWs(
-                deleteDirs: true,
-                patterns: [
-                    [pattern: '.venv/**', type: 'INCLUDE'],
-                    [pattern: '**/__pycache__/**', type: 'INCLUDE'],
-                    [pattern: 'coverage_html/**', type: 'INCLUDE']
-                ]
-            )
+            script {
+                echo '🧹 Cleaning up...'
+                
+                // Clean workspace - must run inside node context
+                node {
+                    cleanWs(
+                        deleteDirs: true,
+                        patterns: [
+                            [pattern: '.venv/**', type: 'INCLUDE'],
+                            [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                            [pattern: 'coverage_html/**', type: 'INCLUDE']
+                        ]
+                    )
+                }
+            }
         }
     }
 }

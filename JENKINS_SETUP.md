@@ -24,13 +24,92 @@ Acest proiect include 3 variante de Jenkinsfile pentru diferite environment-uri.
 
 ### 2. Configurare Credentials
 
-Creează credential în Jenkins pentru `SECRET_KEY`:
+#### ⚠️ CRITIC: Configurare `hangman-secret-key`
 
-1. Jenkins → Manage Jenkins → Credentials
-2. Add Credentials:
-   - Kind: Secret text
-   - ID: `hangman-secret-key`
-   - Secret: `<your-secret-key>`
+**Pipeline-ul va eșua fără acest credential!** Eroarea va fi:
+
+```
+ERROR: hangman-secret-key
+MissingContextVariableException: Required context class hudson.FilePath is missing
+```
+
+#### Pași pentru configurare:
+
+1. **Accesează Jenkins Credentials**:
+
+   ```
+   Jenkins Dashboard → Manage Jenkins → Credentials → System → Global credentials (unrestricted)
+   ```
+
+2. **Adaugă Credential Nou**:
+
+   - Click pe **"Add Credentials"**
+   - Completează formularul:
+
+   | Câmp            | Valoare                                                     |
+   | --------------- | ----------------------------------------------------------- |
+   | **Kind**        | Secret text                                                 |
+   | **Scope**       | Global (Jenkins, nodes, items, all child items, etc)        |
+   | **Secret**      | `<your-secret-key-value>` (ex: `my-super-secret-key-12345`) |
+   | **ID**          | `hangman-secret-key` ⚠️ **EXACT acest ID!**                 |
+   | **Description** | `Hangman Server SECRET_KEY for application`                 |
+
+3. **Salvează**: Click pe **"OK"**
+
+#### Generare SECRET_KEY securizat (opțional)
+
+Dacă nu ai un secret key, generează unul securizat:
+
+**Python:**
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+**OpenSSL:**
+
+```bash
+openssl rand -base64 32
+```
+
+**PowerShell (Windows):**
+
+```powershell
+-join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | % {[char]$_})
+```
+
+#### Verificare Credential
+
+După creare, verifică că apare în listă:
+
+```
+Jenkins → Manage Jenkins → Credentials → System → Global credentials
+```
+
+Trebuie să vezi:
+
+| ID                   | Name | Kind        | Description                  |
+| -------------------- | ---- | ----------- | ---------------------------- |
+| `hangman-secret-key` | -    | Secret text | Hangman Server SECRET_KEY... |
+
+#### ✅ Validare Automată
+
+Pipeline-ul include acum un stage **"Validate Secrets"** care va detecta imediat dacă credentialul lipsește:
+
+```groovy
+stage('Validate Secrets') {
+    steps {
+        script {
+            if (!env.SECRET_KEY) {
+                error "❌ Missing 'hangman-secret-key' credential!"
+            }
+            echo '✅ All required credentials are present'
+        }
+    }
+}
+```
+
+Dacă credentialul lipsește, build-ul va eșua **devreme** (la stage 2), nu la final.
 
 ### 3. Plugin-uri Necesare
 
@@ -236,6 +315,80 @@ agent {
 ```
 
 ## 🔍 Troubleshooting
+
+### ⚠️ ERORI CRITICE COMUNE
+
+#### 1. MissingContextVariableException: Required context class hudson.FilePath is missing
+
+**Simptom:**
+
+```
+hudson.model.MissingContextVariableException: Required context class hudson.FilePath is missing
+Perhaps you forgot to surround the step with a step that provides this, such as: node
+```
+
+**Cauză**: `cleanWs()` rulează în afara unui context `node {}`
+
+**Soluție**: ✅ **REZOLVAT** în toate Jenkinsfile-urile
+
+```groovy
+// ❌ GREȘIT
+post {
+    always {
+        cleanWs()  // Nu are context node
+    }
+}
+
+// ✅ CORECT
+post {
+    always {
+        script {
+            node {
+                cleanWs()  // Rulează în context node
+            }
+        }
+    }
+}
+```
+
+#### 2. ERROR: hangman-secret-key
+
+**Simptom:**
+
+```
+ERROR: hangman-secret-key
+hudson.AbortException: No credentials found
+```
+
+**Cauză**: Credentialul `hangman-secret-key` nu există în Jenkins Credentials
+
+**Soluție**: Creează credentialul (vezi secțiunea **"Configurare Credentials"** de mai sus)
+
+**Verificare rapidă:**
+
+```groovy
+// Pipeline-ul include acum validare automată
+stage('Validate Secrets') {
+    steps {
+        script {
+            if (!env.SECRET_KEY) {
+                error "❌ Missing 'hangman-secret-key' credential!"
+            }
+        }
+    }
+}
+```
+
+#### 3. Build eșuează la cleanup, dar testele sunt OK
+
+**Simptom**: Toate stage-urile reușesc, dar build-ul eșuează în `post always`
+
+**Cauză**: Combinația de:
+
+- `cleanWs()` fără `node {}` context
+- Credentialul lipsă blochează întregul pipeline
+
+**Soluție**: ✅ **REZOLVAT** - ambele probleme fixate în commit-ul curent
 
 ### Build fails la "Setup Environment"
 

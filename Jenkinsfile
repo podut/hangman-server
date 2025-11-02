@@ -45,6 +45,21 @@ pipeline {
             }
         }
         
+        stage('Validate Secrets') {
+            steps {
+                script {
+                    echo '🔑 Validating required credentials...'
+                    
+                    // Check if SECRET_KEY is available
+                    if (!env.SECRET_KEY) {
+                        error "❌ Missing 'hangman-secret-key' credential! Please configure it in Jenkins Credentials."
+                    }
+                    
+                    echo '✅ All required credentials are present'
+                }
+            }
+        }
+        
         stage('Setup Environment') {
             steps {
                 script {
@@ -340,21 +355,21 @@ pipeline {
         always {
             script {
                 echo '🧹 Cleaning up...'
-            }
-            
-            // Clean workspace
-            cleanWs(
-                deleteDirs: true,
-                patterns: [
-                    [pattern: '.venv/**', type: 'INCLUDE'],
-                    [pattern: '**/__pycache__/**', type: 'INCLUDE'],
-                    [pattern: '**/coverage_html/**', type: 'INCLUDE'],
-                    [pattern: '**/*.pyc', type: 'INCLUDE']
-                ]
-            )
-            
-            // Display build duration
-            script {
+                
+                // Clean workspace - must run inside node context
+                node {
+                    cleanWs(
+                        deleteDirs: true,
+                        patterns: [
+                            [pattern: '.venv/**', type: 'INCLUDE'],
+                            [pattern: '**/__pycache__/**', type: 'INCLUDE'],
+                            [pattern: '**/coverage_html/**', type: 'INCLUDE'],
+                            [pattern: '**/*.pyc', type: 'INCLUDE']
+                        ]
+                    )
+                }
+                
+                // Display build duration
                 def duration = currentBuild.durationString.replace(' and counting', '')
                 echo "⏱️ Build duration: ${duration}"
             }

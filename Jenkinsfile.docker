@@ -24,6 +24,20 @@ pipeline {
             }
         }
         
+        stage('Validate Secrets') {
+            steps {
+                script {
+                    echo '🔑 Validating required credentials...'
+                    
+                    if (!env.SECRET_KEY) {
+                        error "❌ Missing 'hangman-secret-key' credential! Please configure it in Jenkins Credentials."
+                    }
+                    
+                    echo '✅ All required credentials are present'
+                }
+            }
+        }
+        
         stage('Install Dependencies') {
             steps {
                 sh '''
@@ -59,8 +73,23 @@ pipeline {
     }
     
     post {
+        success {
+            echo '✅ Pipeline succeeded!'
+        }
+        
+        failure {
+            echo '❌ Pipeline failed!'
+        }
+        
         always {
-            cleanWs()
+            script {
+                echo '🧹 Cleaning up...'
+                
+                // Clean workspace - must run inside node context
+                node {
+                    cleanWs()
+                }
+            }
         }
     }
 }
