@@ -87,6 +87,31 @@ class TestAuthServiceRegister:
         
         assert test_user_data["email"] in str(exc_info.value)
 
+    def test_register_with_very_long_password(self, auth_service):
+        """Test that passwords longer than 72 bytes are truncated and work correctly."""
+        # Create 200-character password (well over bcrypt's 72-byte limit)
+        long_password = "a" * 200
+        email = "longpass@example.com"
+        
+        # Should not raise ValueError
+        result = auth_service.register_user(
+            email=email,
+            password=long_password,
+            nickname="LongPassUser"
+        )
+        
+        assert result["email"] == email
+        assert "user_id" in result
+        
+        # Verify login works with same long password
+        login_result = auth_service.login_user(
+            email=email,
+            password=long_password
+        )
+        
+        assert "access_token" in login_result
+        assert login_result["user_id"] == result["user_id"]
+
 
 @pytest.mark.unit
 class TestAuthServiceLogin:
