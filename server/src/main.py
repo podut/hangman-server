@@ -259,6 +259,23 @@ def delete_account(user=Depends(get_current_user)):
     return None  # 204 No Content
 
 
+@app.get("/api/v1/users/me/export")
+def export_user_data(user=Depends(get_current_user)):
+    """Export all user data (GDPR data portability - Article 20)."""
+    user_id = user["user_id"]
+    
+    # Export all user data
+    export_data = auth_service.export_user_data(
+        user_id,
+        session_repo,
+        game_repo,
+        stats_service
+    )
+    
+    logger.info(f"User data export generated for user {user_id}")
+    return export_data
+
+
 # ============= SESSION ENDPOINTS =============
 
 @app.post("/api/v1/sessions", status_code=201)
@@ -490,6 +507,13 @@ def get_leaderboard(metric: str = "composite_score", period: str = "all", limit:
 
 
 # ============= ADMIN ENDPOINTS =============
+
+@app.get("/api/v1/admin/stats")
+def get_admin_stats(admin=Depends(get_admin_user)):
+    """Get comprehensive admin dashboard statistics (admin only)."""
+    result = stats_service.get_admin_stats()
+    return result
+
 
 @app.get("/api/v1/admin/dictionaries")
 def list_dictionaries(admin=Depends(get_admin_user)):

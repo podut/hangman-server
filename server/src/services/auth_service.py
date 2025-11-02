@@ -212,3 +212,52 @@ class AuthService:
         
         # Return updated user without password
         return {k: v for k, v in user.items() if k != "password"}
+    
+    def export_user_data(self, user_id: str, session_repo, game_repo, stats_service) -> Dict[str, Any]:
+        """Export all user data for GDPR compliance (data portability).
+        
+        Args:
+            user_id: User ID to export data for
+            session_repo: Session repository instance
+            game_repo: Game repository instance
+            stats_service: Stats service instance
+            
+        Returns:
+            Complete user data export including profile, sessions, games, and stats
+        """
+        user = self.user_repo.get_by_id(user_id)
+        if not user:
+            raise UserNotFoundException(user_id)
+        
+        # Get user profile (without password)
+        profile = {k: v for k, v in user.items() if k != "password"}
+        
+        # Get all user sessions
+        sessions = session_repo.get_by_user(user_id)
+        
+        # Get all user games
+        all_games = []
+        for session in sessions:
+            session_games = game_repo.get_by_session(session["session_id"])
+            all_games.extend(session_games)
+        
+        # Get user stats
+        stats = stats_service.get_user_stats(user_id)
+        
+        # Compile export data
+        export_data = {
+            "export_date": datetime.utcnow().isoformat() + "Z",
+            "user_id": user_id,
+            "profile": profile,
+            "sessions": sessions,
+            "games": all_games,
+            "statistics": stats,
+            "metadata": {
+                "total_sessions": len(sessions),
+                "total_games": len(all_games),
+                "data_format": "JSON",
+                "gdpr_compliance": "Article 20 - Right to data portability"
+            }
+        }
+        
+        return export_data

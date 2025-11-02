@@ -206,6 +206,113 @@ class StatsService:
             
         return entries[:limit]
         
+    def get_admin_stats(self) -> Dict[str, Any]:
+        """Get comprehensive statistics for admin dashboard."""
+        # Total users
+        all_users = self.user_repo.get_all()
+        total_users = len(all_users)
+        admin_users = sum(1 for u in all_users if u.get("is_admin", False))
+        
+        # All sessions
+        all_sessions = self.session_repo.get_all()
+        total_sessions = len(all_sessions)
+        active_sessions = sum(1 for s in all_sessions if s["status"] == "ACTIVE")
+        
+        # All games
+        all_games = self.game_repo.get_all()
+        total_games = len(all_games)
+        
+        # Games by time period
+        now = datetime.utcnow()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = now - timedelta(days=7)
+        month_start = now - timedelta(days=30)
+        
+        games_today = 0
+        games_week = 0
+        games_month = 0
+        
+        for game in all_games:
+            if game.get("created_at"):
+                try:
+                    created = datetime.fromisoformat(game["created_at"].replace("Z", "+00:00"))
+                    created_naive = created.replace(tzinfo=None)
+                    
+                    if created_naive >= today_start:
+                        games_today += 1
+                    if created_naive >= week_start:
+                        games_week += 1
+                    if created_naive >= month_start:
+                        games_month += 1
+                except:
+                    continue
+        
+        # Games by status
+        finished_games = [g for g in all_games if g["status"] in ["WON", "LOST", "ABORTED"]]
+        games_won = sum(1 for g in finished_games if g["status"] == "WON")
+        games_lost = sum(1 for g in finished_games if g["status"] == "LOST")
+        games_aborted = sum(1 for g in finished_games if g["status"] == "ABORTED")
+        games_in_progress = sum(1 for g in all_games if g["status"] == "IN_PROGRESS")
+        
+        # Average statistics
+        avg_game_duration = 0.0
+        if finished_games:
+            total_duration = sum(g.get("time_seconds", 0) for g in finished_games)
+            avg_game_duration = total_duration / len(finished_games)
+        
+        # Win rate
+        win_rate = 0.0
+        if games_won + games_lost > 0:
+            win_rate = (games_won / (games_won + games_lost)) * 100
+        
+        # Most active users (top 5)
+        user_game_counts = {}
+        for game in all_games:
+            session = self.session_repo.get_by_id(game["session_id"])
+            if session:
+                user_id = session["user_id"]
+                user_game_counts[user_id] = user_game_counts.get(user_id, 0) + 1
+        
+        top_users = sorted(user_game_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        most_active_users = [
+            {
+                "user_id": user_id,
+                "nickname": self.user_repo.get_by_id(user_id).get("nickname") if self.user_repo.get_by_id(user_id) else None,
+                "game_count": count
+            }
+            for user_id, count in top_users
+        ]
+        
+        return {
+            "users": {
+                "total": total_users,
+                "admins": admin_users,
+                "regular": total_users - admin_users
+            },
+            "sessions": {
+                "total": total_sessions,
+                "active": active_sessions,
+                "completed": total_sessions - active_sessions
+            },
+            "games": {
+                "total": total_games,
+                "won": games_won,
+                "lost": games_lost,
+                "aborted": games_aborted,
+                "in_progress": games_in_progress,
+                "win_rate": win_rate
+            },
+            "games_by_period": {
+                "today": games_today,
+                "last_7_days": games_week,
+                "last_30_days": games_month
+            },
+            "performance": {
+                "avg_game_duration_sec": avg_game_duration
+            },
+            "most_active_users": most_active_users
+        }
+    
     def _filter_by_period(self, games: List[dict], period: str) -> List[dict]:
         """Filter games by time period."""
         if period == "all":
