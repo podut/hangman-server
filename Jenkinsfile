@@ -361,24 +361,46 @@ pipeline {
         
         always {
             script {
-                echo '🧹 Cleaning up...'
+                echo '🧹 Cleaning up test environment...'
                 
                 // Clean workspace - must run inside node context
                 node {
+                    // Forcefully remove virtual environment and temp files
+                    sh '''
+                        echo "🗑️ Removing virtual environment..."
+                        rm -rf .venv || true
+                        
+                        echo "🗑️ Removing Python cache files..."
+                        find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+                        find . -type f -name "*.pyc" -delete 2>/dev/null || true
+                        find . -type f -name "*.pyo" -delete 2>/dev/null || true
+                        
+                        echo "🗑️ Removing test artifacts..."
+                        rm -rf coverage_html/ .coverage coverage.xml test-results.xml || true
+                        rm -rf server/coverage_html/ server/.coverage server/coverage.xml server/test-results.xml || true
+                        
+                        echo "🗑️ Removing build artifacts..."
+                        rm -rf build/ dist/ *.egg-info/ .pytest_cache/ .mypy_cache/ || true
+                        rm -rf server/build/ server/dist/ server/*.egg-info/ || true
+                        
+                        echo "🗑️ Removing server logs and temp files..."
+                        rm -f server/server.log server/server.pid || true
+                        
+                        echo "✅ Cleanup complete!"
+                    '''
+                    
+                    // Final workspace cleanup (removes everything)
                     cleanWs(
                         deleteDirs: true,
-                        patterns: [
-                            [pattern: '.venv/**', type: 'INCLUDE'],
-                            [pattern: '**/__pycache__/**', type: 'INCLUDE'],
-                            [pattern: '**/coverage_html/**', type: 'INCLUDE'],
-                            [pattern: '**/*.pyc', type: 'INCLUDE']
-                        ]
+                        disableDeferredWipeout: true,
+                        notFailBuild: true
                     )
                 }
                 
                 // Display build duration
                 def duration = currentBuild.durationString.replace(' and counting', '')
                 echo "⏱️ Build duration: ${duration}"
+                echo "🎯 Test environment completely removed"
             }
         }
     }
